@@ -17,29 +17,41 @@ package com.example.android.whileinuselocation
 
 import android.content.Context
 import android.location.Location
-import androidx.core.content.edit
-import java.time.LocalDateTime
-import java.time.format.DateTimeFormatter
 import android.os.SystemClock
+import androidx.core.content.edit
+import java.text.SimpleDateFormat
+import java.time.format.DateTimeFormatter
+import java.util.*
 
 
 /**
  * Returns the `location` object as a human readable string.
  */
-fun Location?.toText():String {
+/*fun Localisation?.toText():String {
 
-    val speed = this?.speed
+    val speed = this?.location?.speed
     val speedAccuracyMetersPerSecond = this?.speedAccuracyMetersPerSecond
 
     val bearing = this?.bearing
     val bearingAccuracyDegrees = this?.bearingAccuracyDegrees
 
+    val toSecond = 1000000000
+    val time = this?.elapsedRealtimeNanos?.div(toSecond)
+    val sTime = SystemClock.elapsedRealtimeNanos()/toSecond
+
+    //val date = Date.getTime()
+    //val formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
+    //val TimeStamp = date.format(formatter)
+
+    val sdf = SimpleDateFormat("yyyy.MM.dd HH:mm:ss z")
+    val currentDateandTime: String = sdf.format(Date())
+
     return if (this != null) {
-        "Lat : $latitude, Long : $longitude\nPrécision : ${accuracy/5}, Cap : $bearing ± $bearingAccuracyDegrees\nDate : $time\nVitesse : $speed ± $speedAccuracyMetersPerSecond"
+        "Lat : $latitude, Long : $longitude\nPrécision : ${accuracy/5}, Cap : $bearing ± $bearingAccuracyDegrees\nDate : $currentDateandTime\nÂge du fix : ${sTime- time!!} s\nVitesse : $speed ± $speedAccuracyMetersPerSecond\n\n${this}"
     } else {
         "Unknown location"
     }
-}
+}*/
 
 /**
  * Provides access to SharedPreferences for location to Activities and Services.

@@ -16,30 +16,27 @@
 package com.example.android.whileinuselocation
 
 import android.Manifest
+import android.content.*
 import android.content.pm.PackageManager
-import android.content.BroadcastReceiver
-import android.content.ComponentName
-import android.content.Context
-import android.content.Intent
-import android.content.IntentFilter
-import android.content.ServiceConnection
-import android.content.SharedPreferences
 import android.location.Location
 import android.net.Uri
-import android.os.IBinder
 import android.os.Bundle
+import android.os.IBinder
 import android.provider.Settings
 import android.text.method.ScrollingMovementMethod
 import android.util.Log
 import android.widget.Button
 import android.widget.TextView
-
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
-
+import com.google.android.gms.common.api.ResolvableApiException
+import com.google.android.gms.location.LocationRequest
+import com.google.android.gms.location.LocationServices
+import com.google.android.gms.location.LocationSettingsRequest
 import com.google.android.material.snackbar.Snackbar
 import kotlinx.android.synthetic.main.activity_main.*
+
 
 private const val TAG = "MainActivity"
 private const val REQUEST_FOREGROUND_ONLY_PERMISSIONS_REQUEST_CODE = 34
@@ -156,6 +153,29 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
         val scrollable = output_text_view
         scrollable.movementMethod = ScrollingMovementMethod();
+
+        val locationRequest = LocationRequest.create()
+        locationRequest.priority = LocationRequest.PRIORITY_HIGH_ACCURACY
+
+        val builderSettingsLocation: LocationSettingsRequest.Builder  = LocationSettingsRequest.Builder()
+            .addLocationRequest(locationRequest)
+
+        val task = LocationServices.getSettingsClient(this).checkLocationSettings(builderSettingsLocation.build())
+
+        task.addOnSuccessListener { response ->
+            val states = response.locationSettingsStates
+            if (states.isLocationPresent) {
+                Log.d(TAG,"La localisation est activé")
+            }
+        }
+        task.addOnFailureListener { e ->
+            if (e is ResolvableApiException) {
+                try {
+                    // Handle result in onActivityResult()
+                    e.startResolutionForResult(this, 999)
+                } catch (sendEx: IntentSender.SendIntentException) { }
+            }
+        }
     }
 
     override fun onStart() {
@@ -321,12 +341,12 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     private inner class ForegroundOnlyBroadcastReceiver : BroadcastReceiver() {
 
         override fun onReceive(context: Context, intent: Intent) {
-            val location = intent.getParcelableExtra<Location>(
+            val location = intent.getParcelableExtra<Localisation>(
                 ForegroundOnlyLocationService.EXTRA_LOCATION
             )
 
             if (location != null) {
-                logResultsToScreen("--------------------------\n${location.toText()}\n--------------------------")
+                logResultsToScreen("--------------------------\n$location\n--------------------------")
             }
         }
     }
