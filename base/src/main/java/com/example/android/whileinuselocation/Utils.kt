@@ -60,6 +60,8 @@ internal object SharedPreferenceUtil {
 
     //Clé pour stocker l'état du service
     const val KEY_FOREGROUND_ENABLED = "tracking_foreground_location"
+    //Clé pour savoir si l'application s'est terminé avec un crash
+    const val KEY_APPLICATION_CRASHED = "application_crashed"
 
     /**
      * Returns true if requesting location updates, otherwise returns false.

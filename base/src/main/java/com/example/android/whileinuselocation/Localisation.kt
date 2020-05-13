@@ -34,7 +34,7 @@ class Localisation(private val id: Int, val location: Location?): Parcelable{
         val currentDateandTime: String = sdf.format(Date())
 
         if (location != null) {
-            return "[IDENTIFIANT] : $id\nLat : ${location.latitude}, Long : ${location.longitude}\nPrécision : ${location.accuracy/5}, Cap : $bearing ± $bearingAccuracyDegrees\nDate : $currentDateandTime\nÂge du fix : ${sTime- time!!} s\nVitesse : $speed ± $speedAccuracyMetersPerSecond"
+            return "$id;${location.latitude};${location.longitude};${location.accuracy/5};$bearing ± $bearingAccuracyDegrees;$currentDateandTime;${sTime- time!!};$speed ± $speedAccuracyMetersPerSecond\n"
         }
         else{
             return "No location"

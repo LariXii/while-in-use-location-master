@@ -27,6 +27,7 @@ import android.text.method.ScrollingMovementMethod
 import android.util.Log
 import android.widget.Button
 import android.widget.TextView
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
@@ -38,7 +39,7 @@ import com.google.android.material.snackbar.Snackbar
 import kotlinx.android.synthetic.main.activity_main.*
 
 
-private const val TAG = "MainActivity"
+private const val TAG = "PrototypeLocation"
 private const val REQUEST_FOREGROUND_ONLY_PERMISSIONS_REQUEST_CODE = 34
 
 /**
@@ -98,6 +99,8 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
     private lateinit var outputTextView: TextView
 
+    protected lateinit var app: MainApplication
+
     // Monitors connection to the while-in-use service.
     private val foregroundOnlyServiceConnection = object : ServiceConnection {
 
@@ -118,6 +121,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         super.onCreate(savedInstanceState)
 
         setContentView(R.layout.activity_main)
+        //app = application as MainApplication
 
         foregroundOnlyBroadcastReceiver = ForegroundOnlyBroadcastReceiver()
 
@@ -217,6 +221,11 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         sharedPreferences.unregisterOnSharedPreferenceChangeListener(this)
 
         super.onStop()
+    }
+
+    override fun onDestroy() {
+        Log.d(TAG,"Activité principale est détruite")
+        super.onDestroy()
     }
 
     override fun onSharedPreferenceChanged(sharedPreferences: SharedPreferences, key: String) {

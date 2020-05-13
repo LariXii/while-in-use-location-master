@@ -19,15 +19,13 @@ import android.app.*
 import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
-import android.location.Location
-import android.os.Binder
-import android.os.Build
-import android.os.IBinder
-import android.os.Looper
+import android.os.*
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import com.google.android.gms.location.*
+import java.io.File
+import java.io.FileOutputStream
 
 
 /**
@@ -48,6 +46,10 @@ class ForegroundOnlyLocationService : Service() {
     private var serviceRunningInForeground = false
 
     private var idLocation = 0
+
+    private var fileStream: FileOutputStream? = null
+
+    private lateinit var file: File
 
     private lateinit var user: User
 
@@ -71,8 +73,31 @@ class ForegroundOnlyLocationService : Service() {
     // last location to create a Notification if the user navigates away from the app.
     private var currentLocation: Localisation? = null
 
+    var timerHandler: Handler = Handler()
+    var timerRunnable: Runnable = object : Runnable {
+        override fun run() {
+            val files = applicationContext.fileList()
+
+            Log.d(TAG,"Liste des fichiers sauvegardés : \n")
+            for(f in files){
+                Log.d(TAG,"\t-$f\n")
+            }
+            val nombreDeFichier = files.size
+
+            fileStream = applicationContext.openFileOutput(FILENAME+"_$nombreDeFichier", Context.MODE_PRIVATE)
+
+            notificationManager.notify(
+                NOTIFICATION_ID,
+                generateNotification("Cela fait $TIME_TO_WAIT_BEFORE_SEND_MAPM minutes, ... envoi des localisations au serveur"))
+
+            timerHandler.postDelayed(this, (TIME_TO_WAIT_BEFORE_SEND_MAPM * 1000 * 60).toLong())
+        }
+    }
+
     override fun onCreate() {
         Log.d(TAG, "onCreate()")
+
+        file = File(applicationContext.filesDir, FILENAME)
 
         notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
@@ -119,6 +144,10 @@ class ForegroundOnlyLocationService : Service() {
                         val intent = Intent(ACTION_FOREGROUND_ONLY_LOCATION_BROADCAST)
                         intent.putExtra(EXTRA_LOCATION, currentLocation)
                         LocalBroadcastManager.getInstance(applicationContext).sendBroadcast(intent)
+
+                        // Ecriture des localisations dans le fichier interne ouvert
+                        fileStream?.write(currentLocation.toString().toByteArray())
+                        Log.d(TAG,"Taille du fichier : ${file.length()/1024}ko")
                     }
                     // Normally, you want to save a new location to a database. We are simplifying
                     // things a bit and just saving it as a local variable, as we only need it again
@@ -200,7 +229,7 @@ class ForegroundOnlyLocationService : Service() {
         // we do nothing.
         if (!configurationChange && SharedPreferenceUtil.getLocationTrackingPref(this)) {
             Log.d(TAG, "Start foreground service")
-            val notification = generateNotification()
+            val notification = generateNotification(null)
             startForeground(NOTIFICATION_ID, notification)
             serviceRunningInForeground = true
         }
@@ -232,6 +261,10 @@ class ForegroundOnlyLocationService : Service() {
             // TODO: Step 1.5, Subscribe to location changes.
             fusedLocationProviderClient.requestLocationUpdates(locationRequest, locationCallback, Looper.myLooper())
             user = User("Test")
+            timerHandler.postDelayed(timerRunnable, (TIME_TO_WAIT_BEFORE_SEND_MAPM * 1000 * 60).toLong());
+
+            // Ouverture du fichier interne
+            fileStream = applicationContext.openFileOutput(FILENAME+"_1", Context.MODE_PRIVATE)
 
         } catch (unlikely: SecurityException) {
             SharedPreferenceUtil.saveLocationTrackingPref(this, false)
@@ -254,6 +287,11 @@ class ForegroundOnlyLocationService : Service() {
                 }
             }
 
+            // Fermeture du fichier interne
+            fileStream?.close()
+
+            timerHandler.removeCallbacks(timerRunnable);
+
             SharedPreferenceUtil.saveLocationTrackingPref(this, false)
 
         } catch (unlikely: SecurityException) {
@@ -265,7 +303,7 @@ class ForegroundOnlyLocationService : Service() {
     /*
      * Generates a BIG_TEXT_STYLE Notification that represent latest location.
      */
-    private fun generateNotification(): Notification {
+    private fun generateNotification(text: String?): Notification {
         Log.d(TAG, "generateNotification()")
 
         // Main steps for building a BIG_TEXT_STYLE notification:
@@ -276,7 +314,7 @@ class ForegroundOnlyLocationService : Service() {
         //      4. Build and issue the notification
 
         // 0. Get data
-        val mainNotificationText = getString(R.string.notification)
+        val mainNotificationText = text ?: getString(R.string.notification)
         val titleText = getString(R.string.app_name)
 
         // 1. Create Notification Channel for O+ and beyond devices (26+).
@@ -358,5 +396,9 @@ class ForegroundOnlyLocationService : Service() {
         private const val NOTIFICATION_ID = 12345678
 
         private const val NOTIFICATION_CHANNEL_ID = "while_in_use_channel_01"
+
+        private const val FILENAME = "MAPM_Locations"
+
+        private const val TIME_TO_WAIT_BEFORE_SEND_MAPM = 1
     }
 }
