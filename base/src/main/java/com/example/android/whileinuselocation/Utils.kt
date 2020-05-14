@@ -90,7 +90,7 @@ internal object SharedPreferenceUtil {
             putBoolean(KEY_FOREGROUND_ENABLED, requestingLocationUpdates)
         }
 
-    fun saveMenuPref(context: Context, key: String, value: String){
+    fun saveMenuInfo(context: Context, key: String, value: String?){
         context.getSharedPreferences(
             context.getString(R.string.preference_file_key),
             Context.MODE_PRIVATE).edit {
@@ -98,5 +98,13 @@ internal object SharedPreferenceUtil {
         }
     }
 
-    fun getMenuPref(context: Context, key: String): Boolean = context.getSharedPreferences(context.getString(R.string.preference_file_key), Context.MODE_PRIVATE).getBoolean(key, false)
+    fun eraseMenuInfo(context: Context, key: String){
+        context.getSharedPreferences(
+            context.getString(R.string.preference_file_key),
+            Context.MODE_PRIVATE).edit {
+            remove(key)
+        }
+    }
+
+    fun getMenuPref(context: Context, key: String): String? = context.getSharedPreferences(context.getString(R.string.preference_file_key), Context.MODE_PRIVATE).getString(key, null)
 }

@@ -78,6 +78,34 @@
                 android:ems="10"
                 android:hint="@string/hint_trailer_axles"
                 android:inputType="textPersonName" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:orientation="horizontal">
+
+                <ImageButton
+                    android:id="@+id/act_menu_btn_del"
+                    android:layout_width="32dp"
+                    android:layout_height="32dp"
+                    android:layout_gravity="start"
+                    android:visibility="visible"
+                    app:srcCompat="@android:drawable/ic_menu_delete" />
+
+                <Space
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1" />
+
+                <ImageButton
+                    android:id="@+id/act_menu_btn_save"
+                    android:layout_width="32dp"
+                    android:layout_height="32dp"
+                    android:layout_gravity="end"
+                    app:srcCompat="@android:drawable/ic_menu_save" />
+
+            </LinearLayout>
+
         </LinearLayout>
 
         <Button
@@ -91,6 +119,7 @@
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toBottomOf="@+id/linearLayout" />
+
     </androidx.constraintlayout.widget.ConstraintLayout>
 
 </RelativeLayout>
