@@ -62,6 +62,14 @@ internal object SharedPreferenceUtil {
     const val KEY_FOREGROUND_ENABLED = "tracking_foreground_location"
     //Clé pour savoir si l'application s'est terminé avec un crash
     const val KEY_APPLICATION_CRASHED = "application_crashed"
+    //Clé du nom de l'utilisateur
+    const val KEY_USER_NAME = "user_name"
+    //Clé du type de roue
+    const val KEY_TYRE_TYPE = "tyre_type"
+    //Clé de l'essieu du tracteur
+    const val KEY_TRACTOR_AXLES = "tractor_axles"
+    //Clé de l'essieu de la remorque
+    const val KEY_TRAILER_AXLES = "trailer_axles"
 
     /**
      * Returns true if requesting location updates, otherwise returns false.
@@ -81,4 +89,14 @@ internal object SharedPreferenceUtil {
             Context.MODE_PRIVATE).edit {
             putBoolean(KEY_FOREGROUND_ENABLED, requestingLocationUpdates)
         }
+
+    fun saveMenuPref(context: Context, key: String, value: String){
+        context.getSharedPreferences(
+            context.getString(R.string.preference_file_key),
+            Context.MODE_PRIVATE).edit {
+            putString(key, value)
+        }
+    }
+
+    fun getMenuPref(context: Context, key: String): Boolean = context.getSharedPreferences(context.getString(R.string.preference_file_key), Context.MODE_PRIVATE).getBoolean(key, false)
 }
