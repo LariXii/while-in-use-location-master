@@ -260,7 +260,7 @@ class ForegroundOnlyLocationService : Service() {
         try {
             // TODO: Step 1.5, Subscribe to location changes.
             fusedLocationProviderClient.requestLocationUpdates(locationRequest, locationCallback, Looper.myLooper())
-            user = User("Test")
+            user = User("Test",1,4,2)
             timerHandler.postDelayed(timerRunnable, (TIME_TO_WAIT_BEFORE_SEND_MAPM * 1000 * 60).toLong());
 
             // Ouverture du fichier interne
@@ -399,6 +399,6 @@ class ForegroundOnlyLocationService : Service() {
 
         private const val FILENAME = "MAPM_Locations"
 
-        private const val TIME_TO_WAIT_BEFORE_SEND_MAPM = 1
+        private const val TIME_TO_WAIT_BEFORE_SEND_MAPM = 5
     }
 }

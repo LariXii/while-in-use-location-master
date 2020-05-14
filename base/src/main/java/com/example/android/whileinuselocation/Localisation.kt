@@ -7,7 +7,7 @@ import android.os.SystemClock
 import java.text.SimpleDateFormat
 import java.util.*
 
-class Localisation(private val id: Int, val location: Location?): Parcelable{
+class Localisation(private val id: Int, private val location: Location?): Parcelable{
 
     constructor(parcel: Parcel) : this(
         parcel.readInt(),
@@ -39,6 +39,10 @@ class Localisation(private val id: Int, val location: Location?): Parcelable{
         else{
             return "No location"
         }
+    }
+
+    fun toMAPM(){
+
     }
 
     override fun writeToParcel(parcel: Parcel, flags: Int) {

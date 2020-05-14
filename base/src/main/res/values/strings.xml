@@ -15,7 +15,14 @@
   ~ limitations under the License.
   -->
 <resources>
-    <string name="app_name">Location in Android</string>
+    <string name="app_name">Truck Tracker</string>
+
+    <string name="hint_name">Nom</string>
+    <string name="hint_tyre_type">Type de roue</string>
+    <string name="hint_trailer_axles">Essieu de remorque</string>
+    <string name="hint_tractor_axles">Essieu de tracteur</string>
+
+    <string name="act_menu_btn">Valider</string>
 
     <string name="launch_activity">Launch activity</string>
     <string name="location_unknown">Location Unknown</string>
