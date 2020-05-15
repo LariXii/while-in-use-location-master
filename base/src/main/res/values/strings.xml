@@ -42,4 +42,5 @@
     <string name="no_location_text">No current location</string>
 
     <string name="notification">Prototype de localisation est exécuté en arrière-plan</string>
+    <string name="notification_file">Envoi du fichier MAPM</string>
 </resources>

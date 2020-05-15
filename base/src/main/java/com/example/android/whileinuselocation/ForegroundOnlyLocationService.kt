@@ -26,6 +26,8 @@ import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import com.google.android.gms.location.*
 import java.io.File
 import java.io.FileOutputStream
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
 
 
 /**
@@ -49,7 +51,9 @@ class ForegroundOnlyLocationService : Service() {
 
     private var fileStream: FileOutputStream? = null
 
-    private lateinit var file: File
+    private lateinit var fileWritting: String
+
+    private val filesUploading: MutableList<String> = mutableListOf()
 
     private lateinit var user: User
 
@@ -74,21 +78,21 @@ class ForegroundOnlyLocationService : Service() {
     private var currentLocation: Localisation? = null
 
     var timerHandler: Handler = Handler()
-    var timerRunnable: Runnable = object : Runnable {
+    private var timerRunnable: Runnable = object : Runnable {
         override fun run() {
-            val files = applicationContext.fileList()
+            Log.d(TAG,"Fichier à uploader : $filesUploading")
 
-            Log.d(TAG,"Liste des fichiers sauvegardés : \n")
+            var files = applicationContext.fileList()
+            Log.d(TAG,"Liste des fichiers dans la mémoire interne avant envoi : \n")
             for(f in files){
-                Log.d(TAG,"\t-$f\n")
+                Log.d(TAG,"\t-$f size : ${File(applicationContext.filesDir, f).length()}octets\n")
             }
-            val nombreDeFichier = files.size
 
-            fileStream = applicationContext.openFileOutput(FILENAME+"_$nombreDeFichier", Context.MODE_PRIVATE)
+            //Création du nouveau fichier dans lequel écrire et changement du flux sur celui-ci
+            createFileToWrite()
 
-            notificationManager.notify(
-                NOTIFICATION_ID,
-                generateNotification("Cela fait $TIME_TO_WAIT_BEFORE_SEND_MAPM minutes, ... envoi des localisations au serveur"))
+            //Envoi du fichier au serveur
+            uploadFile()
 
             timerHandler.postDelayed(this, (TIME_TO_WAIT_BEFORE_SEND_MAPM * 1000 * 60).toLong())
         }
@@ -96,8 +100,6 @@ class ForegroundOnlyLocationService : Service() {
 
     override fun onCreate() {
         Log.d(TAG, "onCreate()")
-
-        file = File(applicationContext.filesDir, FILENAME)
 
         notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
@@ -147,7 +149,6 @@ class ForegroundOnlyLocationService : Service() {
 
                         // Ecriture des localisations dans le fichier interne ouvert
                         fileStream?.write(currentLocation.toString().toByteArray())
-                        Log.d(TAG,"Taille du fichier : ${file.length()/1024}ko")
                     }
                     // Normally, you want to save a new location to a database. We are simplifying
                     // things a bit and just saving it as a local variable, as we only need it again
@@ -178,6 +179,15 @@ class ForegroundOnlyLocationService : Service() {
                 }
             }
         }
+
+        // TODO Supprimer tous les fichiers (clean up)
+        /*
+        cleanUpFiles()
+
+        Log.d(TAG,"Liste des fichiers sauvegardés : \n")
+        for(f in files){
+            Log.d(TAG,"\t-$f size : ${File(applicationContext.filesDir, f).length()}octets\n")
+        }*/
 
     }
 
@@ -260,11 +270,11 @@ class ForegroundOnlyLocationService : Service() {
         try {
             // TODO: Step 1.5, Subscribe to location changes.
             fusedLocationProviderClient.requestLocationUpdates(locationRequest, locationCallback, Looper.myLooper())
+
             user = User("Test",1,4,2)
             timerHandler.postDelayed(timerRunnable, (TIME_TO_WAIT_BEFORE_SEND_MAPM * 1000 * 60).toLong());
 
-            // Ouverture du fichier interne
-            fileStream = applicationContext.openFileOutput(FILENAME+"_1", Context.MODE_PRIVATE)
+            createFileToWrite()
 
         } catch (unlikely: SecurityException) {
             SharedPreferenceUtil.saveLocationTrackingPref(this, false)
@@ -289,6 +299,8 @@ class ForegroundOnlyLocationService : Service() {
 
             // Fermeture du fichier interne
             fileStream?.close()
+            // Envoi du fichier en cours d'écriture à la fin du service
+            uploadFile()
 
             timerHandler.removeCallbacks(timerRunnable);
 
@@ -298,6 +310,121 @@ class ForegroundOnlyLocationService : Service() {
             SharedPreferenceUtil.saveLocationTrackingPref(this, true)
             Log.e(TAG, "Lost location permissions. Couldn't remove updates. $unlikely")
         }
+    }
+
+    private fun createFileToWrite(){
+        // Création du fichier
+        val name = nameMAPMFiles()
+        File(applicationContext.filesDir, name)
+        // Sauvegarde du nom du fichier en cours d'écriture
+        fileWritting = name
+        //Ajout du fichier dans la liste des fichiers à uploader
+        filesUploading.add(name)
+        // Ouverture du fichier
+        fileStream = applicationContext.openFileOutput(fileWritting, Context.MODE_PRIVATE)
+        Log.d(TAG,"Fichier en cours d'écriture : $fileWritting")
+    }
+
+    private fun cleanUpFiles(){
+        val files = applicationContext.fileList()
+        Log.d(TAG,"Suppression de tous les fichiers\n")
+        for(f in files){
+            File(applicationContext.filesDir, f).delete()
+        }
+    }
+
+    private fun nameMAPMFiles(): String{
+        //Récupération de la date et du temps à l'appel de cette fonction
+        val date: LocalDateTime = LocalDateTime.now()
+        //Initialisation des formatters
+        val dateFormatter = DateTimeFormatter.ofPattern("yyyyMMdd")
+        val timeFormatter = DateTimeFormatter.ofPattern("HHmmss")
+        //Initialisation de la date et du temps sous le bon format à l'aide de leur formatter respectif
+        val parsedDate: String = date.format(dateFormatter)
+        val parsedTime: String = date.format(timeFormatter)
+        //Création du nom du fichier
+        return "${parsedDate}_${parsedTime}_${TYPE_FILE}_${CREATOR_ID}_${CHECK_SUM_ID}.$EXTENSION"
+    }
+
+    private fun createNotificationUpload(): NotificationCompat.Builder{
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+
+            // Création du nouveau Channel de notification
+            val name = getString(R.string.notification_file)
+            val mChannel = NotificationChannel(NOTIFICATION_CHANNEL_FILE_ID, name, NotificationManager.IMPORTANCE_LOW)
+
+            // Register the channel with the system; you can't change the importance
+            // or other notification behaviors after this
+            notificationManager.createNotificationChannel(mChannel)
+        }
+
+        val notificationCompatBuilder =
+            NotificationCompat.Builder(applicationContext, NOTIFICATION_CHANNEL_ID)
+
+        notificationCompatBuilder
+            .setContentTitle("Envoi du fichier")
+            .setContentText("Envoi en cours")
+            .setSmallIcon(R.drawable.ic_upload)
+            .setDefaults(NotificationCompat.DEFAULT_ALL)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+        return notificationCompatBuilder
+    }
+
+    private fun uploadFile(){
+        //Création de la notification pour afficher l'upload du fichier
+        val notificationCompatBuilder = createNotificationUpload()
+
+        // Start a the operation in a background thread
+        Thread(
+            Runnable {
+                Log.d(TAG, "Envoi du fichier : ${filesUploading[0]}")
+                // Do the "lengthy" operation 20 times
+                var incr: Int = 0
+                while (incr <= 100) {
+
+                    // Sets the progress indicator to a max value, the current completion percentage and "determinate" state
+                    notificationCompatBuilder.setProgress(100, incr, false)
+                    // Displays the progress bar for the first time.
+                    notificationManager.notify(NOTIFICATION_FILE_ID, notificationCompatBuilder.build())
+                    // Sleeps the thread, simulating an operation
+                    try {
+                        // Sleep for 1 second
+                        Thread.sleep(1 * 1000.toLong())
+                    } catch (e: InterruptedException) {
+                        Log.d("TAG", "sleep failure")
+                    }
+                    incr += 5
+                }
+                // When the loop is finished, updates the notification
+                notificationCompatBuilder.setContentText("Download completed") // Removes the progress bar
+                    .setProgress(0, 0, false)
+                notificationManager.notify(NOTIFICATION_FILE_ID, notificationCompatBuilder.build())
+
+                try {
+                    // Sleep for 1 second
+                    Thread.sleep(1 * 1000.toLong())
+                } catch (e: InterruptedException) {
+                    Log.d("TAG", "sleep failure")
+                }
+                notificationCompatBuilder.setOngoing(false)
+
+                //Suppression automatique de la notification
+                notificationManager.notify(NOTIFICATION_FILE_ID, notificationCompatBuilder.build())
+                notificationManager.cancel(NOTIFICATION_FILE_ID)
+
+                //Suppression du fichier une fois uploadé
+                val s = filesUploading.removeAt(0)
+                File(applicationContext.filesDir, s).delete()
+
+                //Affichage des fichiers dans la mémoire interne
+                val files = applicationContext.fileList()
+                Log.d(TAG,"Liste des fichiers dans la mémoire interne après envoi : \n")
+                for(f in files){
+                    Log.d(TAG,"\t-$f size : ${File(applicationContext.filesDir, f).length()}octets\n")
+                }
+
+            } // Starts the thread by calling the run() method in its Runnable
+        ).start()
     }
 
     /*
@@ -395,10 +522,23 @@ class ForegroundOnlyLocationService : Service() {
 
         private const val NOTIFICATION_ID = 12345678
 
+        private const val NOTIFICATION_FILE_ID = 87654321
+
         private const val NOTIFICATION_CHANNEL_ID = "while_in_use_channel_01"
+
+        private const val NOTIFICATION_CHANNEL_FILE_ID = "while_in_use_channel_02"
 
         private const val FILENAME = "MAPM_Locations"
 
-        private const val TIME_TO_WAIT_BEFORE_SEND_MAPM = 5
+        private const val EXTENSION = "csv"
+
+        private const val TYPE_FILE = "MAPM"
+
+        private const val CREATOR_ID = "ea0bb5a01de9"
+
+        private const val CHECK_SUM_ID = "4680ee8bd1607273607ae2de20fb2e10"
+
+        private const val TIME_TO_WAIT_BEFORE_SEND_MAPM = 1
     }
 }
+
