@@ -4,19 +4,11 @@ import android.location.Location
 import android.os.Parcel
 import android.os.Parcelable
 import android.os.SystemClock
-import java.text.SimpleDateFormat
-import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
-import java.util.*
 
 class Localisation(private val _sequenceNumber: Int, private val location: Location, private val _tyreType: Int, private val _tractorAxles: Int, private val _trailerAxles: Int): Parcelable{
 
-    constructor(parcel: Parcel) : this(
-        parcel.readInt(),
-        parcel.readParcelable(Location::class.java.classLoader)
-    ) {
-    }
     private val c1: Int = 399367311
     private val c2: Int = 3
     private val c3: Int = 10747906
@@ -35,6 +27,15 @@ class Localisation(private val _sequenceNumber: Int, private val location: Locat
     private val c16: String = ""
     private val c17: String = "DE"
     private val c18: Int = 16383
+
+    constructor(parcel: Parcel) : this(
+        parcel.readInt(),
+        parcel.readParcelable(Location::class.java.classLoader),
+        parcel.readInt(),
+        parcel.readInt(),
+        parcel.readInt()
+    ) {
+    }
 
     init{
         val date = LocalDateTime.now()
@@ -73,8 +74,11 @@ class Localisation(private val _sequenceNumber: Int, private val location: Locat
     }
 
     override fun writeToParcel(parcel: Parcel, flags: Int) {
-        parcel.writeInt(id)
+        parcel.writeInt(_sequenceNumber)
         parcel.writeParcelable(location, flags)
+        parcel.writeInt(_tyreType)
+        parcel.writeInt(_tractorAxles)
+        parcel.writeInt(_trailerAxles)
     }
 
     override fun describeContents(): Int {
