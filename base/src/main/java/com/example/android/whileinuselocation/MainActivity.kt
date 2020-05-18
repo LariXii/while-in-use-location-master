@@ -16,7 +16,9 @@
 package com.example.android.whileinuselocation
 
 import android.Manifest
+import android.app.PendingIntent
 import android.content.*
+import android.content.IntentSender.SendIntentException
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
@@ -115,9 +117,8 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     //Au lancement de l'application
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        Log.d(TAG,"onCreate Activity")
+
         setContentView(R.layout.activity_main)
-        //app = application as MainApplication
 
         foregroundOnlyBroadcastReceiver = ForegroundOnlyBroadcastReceiver()
 
@@ -154,28 +155,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         val scrollable = output_text_view
         scrollable.movementMethod = ScrollingMovementMethod();
 
-        val locationRequest = LocationRequest.create()
-        locationRequest.priority = LocationRequest.PRIORITY_HIGH_ACCURACY
-
-        val builderSettingsLocation: LocationSettingsRequest.Builder  = LocationSettingsRequest.Builder()
-            .addLocationRequest(locationRequest)
-
-        val task = LocationServices.getSettingsClient(this).checkLocationSettings(builderSettingsLocation.build())
-
-        task.addOnSuccessListener { response ->
-            val states = response.locationSettingsStates
-            if (states.isLocationPresent) {
-                Log.d(TAG,"La localisation est activé")
-            }
-        }
-        task.addOnFailureListener { e ->
-            if (e is ResolvableApiException) {
-                try {
-                    // Handle result in onActivityResult()
-                    e.startResolutionForResult(this, 999)
-                } catch (sendEx: IntentSender.SendIntentException) { }
-            }
-        }
+        requestLocationSettingsEnable()
     }
 
     override fun onStart() {
@@ -323,6 +303,31 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         }
     }
 
+    private fun requestLocationSettingsEnable(){
+        val locationRequest = LocationRequest.create()
+        locationRequest.priority = LocationRequest.PRIORITY_HIGH_ACCURACY
+
+        val builderSettingsLocation: LocationSettingsRequest.Builder  = LocationSettingsRequest.Builder()
+            .addLocationRequest(locationRequest)
+
+        val task = LocationServices.getSettingsClient(this).checkLocationSettings(builderSettingsLocation.build())
+
+        task.addOnSuccessListener { response ->
+            val states = response.locationSettingsStates
+            if (states.isLocationPresent) {
+                Log.d(TAG,"La localisation est activé")
+            }
+        }
+        task.addOnFailureListener { e ->
+            if (e is ResolvableApiException) {
+                try {
+                    // Handle result in onActivityResult()
+                    e.startResolutionForResult(this, 999)
+                } catch (sendEx: IntentSender.SendIntentException) { }
+            }
+        }
+    }
+
     /**
      * Fonction pour changer le texte du bouton de l'interface
      */
@@ -349,12 +354,34 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     private inner class ForegroundOnlyBroadcastReceiver : BroadcastReceiver() {
 
         override fun onReceive(context: Context, intent: Intent) {
+            // LOCATION
             val location = intent.getParcelableExtra<Localisation>(
                 ForegroundOnlyLocationService.EXTRA_LOCATION
             )
 
             if (location != null) {
                 logResultsToScreen("--------------------------\n$location\n--------------------------")
+            }
+
+            // CHECK_REQUEST
+            val pendingIntent = intent.getParcelableExtra<PendingIntent>(
+                ForegroundOnlyLocationService.EXTRA_PENDING_INTENT
+            )
+
+            if(pendingIntent != null) {
+                try {
+                    Log.d(TAG,"HELLEOEFDNFHDBJKBFUI BSUDF")
+                    startIntentSenderForResult(
+                        pendingIntent.intentSender,
+                        999,
+                        null,
+                        0,
+                        0,
+                        0
+                    )
+                } catch (e: SendIntentException) {
+                    // Ignore the error
+                }
             }
         }
     }

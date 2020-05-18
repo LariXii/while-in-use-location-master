@@ -18,11 +18,13 @@ package com.example.android.whileinuselocation
 import android.app.*
 import android.content.Context
 import android.content.Intent
+import android.content.IntentSender
 import android.content.res.Configuration
 import android.os.*
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
+import com.google.android.gms.common.api.ResolvableApiException
 import com.google.android.gms.location.*
 import java.io.File
 import java.io.FileOutputStream
@@ -51,7 +53,7 @@ class ForegroundOnlyLocationService : Service() {
 
     private var fileStream: FileOutputStream? = null
 
-    private lateinit var fileWritting: String
+    private lateinit var fileWriting: String
 
     private val filesUploading: MutableList<String> = mutableListOf()
 
@@ -140,7 +142,7 @@ class ForegroundOnlyLocationService : Service() {
                 if (locationResult?.locations != null) {
 
                     for(loc in locationResult.locations){
-                        currentLocation = Localisation(idLocation++, loc)
+                        currentLocation = Localisation(idLocation++, loc,1,2,3)
                         user.addLocation(currentLocation!!)
 
                         val intent = Intent(ACTION_FOREGROUND_ONLY_LOCATION_BROADCAST)
@@ -148,7 +150,7 @@ class ForegroundOnlyLocationService : Service() {
                         LocalBroadcastManager.getInstance(applicationContext).sendBroadcast(intent)
 
                         // Ecriture des localisations dans le fichier interne ouvert
-                        fileStream?.write(currentLocation.toString().toByteArray())
+                        fileStream?.write(currentLocation!!.toMAPM().toByteArray())
                     }
                     // Normally, you want to save a new location to a database. We are simplifying
                     // things a bit and just saving it as a local variable, as we only need it again
@@ -167,15 +169,46 @@ class ForegroundOnlyLocationService : Service() {
                     //intent.putExtra(EXTRA_LOCATION, currentLocation)
                     //LocalBroadcastManager.getInstance(applicationContext).sendBroadcast(intent)
 
-                    // Updates notification content if this service is running as a foreground
-                    // service.
-                    /*if (serviceRunningInForeground) {
-                        notificationManager.notify(
-                            NOTIFICATION_ID,
-                            generateNotification(currentLocation))
-                    }*/
                 } else {
                     Log.d(TAG, "Location information isn't available.")
+                }
+            }
+
+            override fun onLocationAvailability(availability: LocationAvailability?) {
+                super.onLocationAvailability(availability)
+                if (availability != null) {
+                    if(!availability.isLocationAvailable) {
+
+                        val builderSettingsLocation: LocationSettingsRequest.Builder  = LocationSettingsRequest.Builder()
+                            .addLocationRequest(locationRequest)
+
+                        val task = LocationServices.getSettingsClient(applicationContext).checkLocationSettings(builderSettingsLocation.build())
+
+                        task.addOnSuccessListener { response ->
+                            val states = response.locationSettingsStates
+                        }
+                        task.addOnFailureListener { e ->
+                            if (e is ResolvableApiException) {
+                                try {
+                                    //Si le service tourne en premier plan
+                                    if(serviceRunningInForeground){
+                                        //On lance l'activité pour résoudre le problème
+                                        val intent = Intent(applicationContext, MainActivity::class.java)
+                                        intent.putExtra(EXTRA_PENDING_INTENT, e.resolution)
+                                        startActivity(intent)
+                                    }
+                                    else{
+                                        //On envoi un message à l'activité pour résoudre le problème
+                                        val intent = Intent(ACTION_FOREGROUND_ONLY_LOCATION_BROADCAST)
+                                        intent.putExtra(EXTRA_CHECK_REQUEST, e.resolution)
+                                        LocalBroadcastManager.getInstance(applicationContext).sendBroadcast(intent)
+                                    }
+                                    // Handle result in onActivityResult()
+                                    //e.startResolutionForResult(this, REQUEST_CHECK_SETTINGS)
+                                } catch (sendEx: IntentSender.SendIntentException) { }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -254,6 +287,7 @@ class ForegroundOnlyLocationService : Service() {
 
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
+        Log.d(TAG,"La configuration a changé ! ")
         configurationChange = true
     }
 
@@ -291,7 +325,7 @@ class ForegroundOnlyLocationService : Service() {
             removeTask.addOnCompleteListener { task ->
                 if (task.isSuccessful) {
                     Log.d(TAG, "Location Callback removed.")
-                    stopSelf()
+                    //stopSelf()
                 } else {
                     Log.d(TAG, "Failed to remove Location Callback.")
                 }
@@ -317,12 +351,12 @@ class ForegroundOnlyLocationService : Service() {
         val name = nameMAPMFiles()
         File(applicationContext.filesDir, name)
         // Sauvegarde du nom du fichier en cours d'écriture
-        fileWritting = name
+        fileWriting = name
         //Ajout du fichier dans la liste des fichiers à uploader
         filesUploading.add(name)
         // Ouverture du fichier
-        fileStream = applicationContext.openFileOutput(fileWritting, Context.MODE_PRIVATE)
-        Log.d(TAG,"Fichier en cours d'écriture : $fileWritting")
+        fileStream = applicationContext.openFileOutput(fileWriting, Context.MODE_PRIVATE)
+        Log.d(TAG,"Fichier en cours d'écriture : $fileWriting")
     }
 
     private fun cleanUpFiles(){
@@ -414,7 +448,7 @@ class ForegroundOnlyLocationService : Service() {
 
                 //Suppression du fichier une fois uploadé
                 val s = filesUploading.removeAt(0)
-                File(applicationContext.filesDir, s).delete()
+                //File(applicationContext.filesDir, s).delete()
 
                 //Affichage des fichiers dans la mémoire interne
                 val files = applicationContext.fileList()
@@ -520,6 +554,10 @@ class ForegroundOnlyLocationService : Service() {
         private const val EXTRA_CANCEL_LOCATION_TRACKING_FROM_NOTIFICATION =
             "$PACKAGE_NAME.extra.CANCEL_LOCATION_TRACKING_FROM_NOTIFICATION"
 
+        internal const val EXTRA_CHECK_REQUEST = "$PACKAGE_NAME.extra.CHECK_REQUEST"
+
+        internal const val EXTRA_PENDING_INTENT = "$PACKAGE_NAME.extra.PENDING_INTENT"
+
         private const val NOTIFICATION_ID = 12345678
 
         private const val NOTIFICATION_FILE_ID = 87654321
@@ -527,8 +565,6 @@ class ForegroundOnlyLocationService : Service() {
         private const val NOTIFICATION_CHANNEL_ID = "while_in_use_channel_01"
 
         private const val NOTIFICATION_CHANNEL_FILE_ID = "while_in_use_channel_02"
-
-        private const val FILENAME = "MAPM_Locations"
 
         private const val EXTENSION = "csv"
 
@@ -538,7 +574,9 @@ class ForegroundOnlyLocationService : Service() {
 
         private const val CHECK_SUM_ID = "4680ee8bd1607273607ae2de20fb2e10"
 
-        private const val TIME_TO_WAIT_BEFORE_SEND_MAPM = 1
+        private const val TIME_TO_WAIT_BEFORE_SEND_MAPM = 5
+
+        private const val REQUEST_CHECK_SETTINGS = 1
     }
 }
 
