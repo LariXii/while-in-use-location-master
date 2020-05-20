@@ -16,6 +16,7 @@
 package com.example.android.whileinuselocation
 
 import android.Manifest
+import android.app.Activity
 import android.app.PendingIntent
 import android.content.*
 import android.content.IntentSender.SendIntentException
@@ -26,7 +27,6 @@ import android.os.IBinder
 import android.provider.Settings
 import android.text.method.ScrollingMovementMethod
 import android.util.Log
-import android.widget.Button
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
@@ -84,6 +84,11 @@ private const val REQUEST_FOREGROUND_ONLY_PERMISSIONS_REQUEST_CODE = 34
  * notification. This dismisses the notification and stops the service.
  */
 class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceChangeListener {
+
+    companion object{
+        private const val REQUEST_CHECK_SETTINGS = 1
+    }
+
     private var foregroundOnlyLocationServiceBound = false
 
     // Provides location updates for while-in-use feature.
@@ -92,10 +97,11 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     // Listens for location broadcasts from ForegroundOnlyLocationService.
     private lateinit var foregroundOnlyBroadcastReceiver: ForegroundOnlyBroadcastReceiver
 
+    private lateinit var intentFilterCheckRequest: IntentFilter
+    private lateinit var intentFilterLocation: IntentFilter
+
     //Objet permettant de sauvegarder des informations sur l'application une fois quittée
     private lateinit var sharedPreferences:SharedPreferences
-
-    private lateinit var foregroundOnlyLocationButton: Button
 
     private lateinit var outputTextView: TextView
 
@@ -126,11 +132,10 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             getSharedPreferences(getString(R.string.preference_file_key), Context.MODE_PRIVATE)
 
         // Liaison des composants de l'interface avec le controller
-        foregroundOnlyLocationButton = findViewById(R.id.foreground_only_location_button)
         outputTextView = findViewById(R.id.output_text_view)
 
         // Listener onClick sur le bouton de lancement/arrêt des updates de localisations
-        foregroundOnlyLocationButton.setOnClickListener {
+        foreground_only_location_button.setOnClickListener {
             //Récupèration de l'état de l'application
             val enabled = sharedPreferences.getBoolean(SharedPreferenceUtil.KEY_FOREGROUND_ENABLED, false)
 
@@ -175,11 +180,15 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     override fun onResume() {
         super.onResume()
         Log.d(TAG,"onResume Activity")
+        intentFilterLocation = IntentFilter(ForegroundOnlyLocationService.ACTION_SERVICE_LOCATION_BROADCAST_LOCATION)
+        intentFilterCheckRequest = IntentFilter(ForegroundOnlyLocationService.ACTION_SERVICE_LOCATION_BROADCAST_CHECK_REQUEST)
         LocalBroadcastManager.getInstance(this).registerReceiver(
-            foregroundOnlyBroadcastReceiver,
-            IntentFilter(
-                ForegroundOnlyLocationService.ACTION_FOREGROUND_ONLY_LOCATION_BROADCAST)
+            foregroundOnlyBroadcastReceiver,intentFilterLocation
         )
+        LocalBroadcastManager.getInstance(this).registerReceiver(
+            foregroundOnlyBroadcastReceiver,intentFilterCheckRequest
+        )
+
     }
 
     override fun onPause() {
@@ -321,22 +330,39 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         task.addOnFailureListener { e ->
             if (e is ResolvableApiException) {
                 try {
+                    Log.d(TAG,"La localisation n'est pas activé envoi d'une résolution")
                     // Handle result in onActivityResult()
-                    e.startResolutionForResult(this, 999)
+                    e.startResolutionForResult(this, REQUEST_CHECK_SETTINGS)
                 } catch (sendEx: IntentSender.SendIntentException) { }
             }
         }
     }
 
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        //val states: LocationSettingsStates = LocationSettingsStates.fromIntent(intent)
+        when(requestCode) {
+            REQUEST_CHECK_SETTINGS ->
+            when (resultCode) {
+                Activity.RESULT_OK -> {
+                    // All required changes were successfully made
+
+                }
+                Activity.RESULT_CANCELED -> {
+
+
+                }
+                else -> {
+
+                }
+            }
+        }
+        super.onActivityResult(requestCode, resultCode, data)
+    }
     /**
      * Fonction pour changer le texte du bouton de l'interface
      */
     private fun updateButtonState(trackingLocation: Boolean) {
-        if (trackingLocation) {
-            foregroundOnlyLocationButton.text = getString(R.string.stop_location_updates_button_text)
-        } else {
-            foregroundOnlyLocationButton.text = getString(R.string.start_location_updates_button_text)
-        }
+        foreground_only_location_button.isChecked = trackingLocation
     }
 
     /**
@@ -354,33 +380,43 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     private inner class ForegroundOnlyBroadcastReceiver : BroadcastReceiver() {
 
         override fun onReceive(context: Context, intent: Intent) {
-            // LOCATION
-            val location = intent.getParcelableExtra<Localisation>(
-                ForegroundOnlyLocationService.EXTRA_LOCATION
-            )
-
-            if (location != null) {
-                logResultsToScreen("--------------------------\n$location\n--------------------------")
-            }
-
-            // CHECK_REQUEST
-            val pendingIntent = intent.getParcelableExtra<PendingIntent>(
-                ForegroundOnlyLocationService.EXTRA_PENDING_INTENT
-            )
-
-            if(pendingIntent != null) {
-                try {
-                    Log.d(TAG,"HELLEOEFDNFHDBJKBFUI BSUDF")
-                    startIntentSenderForResult(
-                        pendingIntent.intentSender,
-                        999,
-                        null,
-                        0,
-                        0,
-                        0
+            when(intent.action){
+                // LOCATION
+                ForegroundOnlyLocationService.ACTION_SERVICE_LOCATION_BROADCAST_LOCATION -> {
+                    Log.d(TAG,"ACTION_SERVICE_LOCATION_BROADCAST_LOCATION")
+                    val location = intent.getParcelableExtra<Localisation>(
+                        ForegroundOnlyLocationService.EXTRA_LOCATION
                     )
-                } catch (e: SendIntentException) {
-                    // Ignore the error
+
+                    if (location != null) {
+                        logResultsToScreen("--------------------------\n$location\n--------------------------")
+                    }
+                }
+                // CHECK_REQUEST
+                ForegroundOnlyLocationService.ACTION_SERVICE_LOCATION_BROADCAST_CHECK_REQUEST -> {
+                    Log.d(TAG,"ACTION_SERVICE_LOCATION_BROADCAST_CHECK_REQUEST")
+                    val pendingIntent = intent.getParcelableExtra<PendingIntent>(
+                        ForegroundOnlyLocationService.EXTRA_CHECK_REQUEST
+                    )
+                    Log.d(TAG,"Intent : $pendingIntent")
+
+                    if(pendingIntent != null) {
+                        try {
+                            startIntentSenderForResult(
+                                pendingIntent.intentSender,
+                                REQUEST_CHECK_SETTINGS,
+                                null,
+                                0,
+                                0,
+                                0
+                            )
+                        } catch (e: SendIntentException) {
+                            // Ignore the error
+                        }
+                    }
+                }
+                else -> {
+
                 }
             }
         }

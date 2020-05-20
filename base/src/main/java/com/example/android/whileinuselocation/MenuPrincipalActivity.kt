@@ -7,6 +7,8 @@ import android.os.Bundle
 import android.text.Editable
 import android.text.TextWatcher
 import android.util.Log
+import android.view.Menu
+import android.view.MenuItem
 import android.view.View
 import android.widget.EditText
 import android.widget.Toast
@@ -53,6 +55,7 @@ class MenuPrincipalActivity: AppCompatActivity(), TextWatcher, SharedPreferences
         act_menu_btn_valider.setOnClickListener{
             val locationActivity = Intent(this, MainActivity::class.java)
             startActivity(locationActivity)
+            finish()
         }
 
         //Ajout d'un écouteur de click sur le bouton de sauvegarde des informations de l'utilisateur
@@ -84,6 +87,17 @@ class MenuPrincipalActivity: AppCompatActivity(), TextWatcher, SharedPreferences
             txt.setText(sharedPreferences.getString(txt.tag.toString(), null))
         }
 
+    }
+    override fun onCreateOptionsMenu(menu: Menu?): Boolean {
+        menuInflater.inflate(R.menu.menu_items, menu)
+        return super.onCreateOptionsMenu(menu)
+    }
+
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        if(item.itemId == R.id.item_menu_darktheme){
+            return true
+        }
+        return super.onOptionsItemSelected(item)
     }
 
     override fun afterTextChanged(s: Editable?) {}

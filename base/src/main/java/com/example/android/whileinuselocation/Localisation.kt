@@ -117,7 +117,7 @@ class Localisation(private val _sequenceNumber: Int, private val location: Locat
         //val currentDateandTime: String = sdf.format(Date())
 
         return if (location != null) {
-            "ID : $c14\nLati : ${location.latitude}\nLong : ${location.longitude}\nPrécision : ${location.accuracy/5}\nCap : $bearing ± $bearingAccuracyDegrees\nDate : $parsedDate\nÂge du fix${sTime- time!!}\nVitesse : $speed ± $speedAccuracyMetersPerSecond\n"
+            "ID : $c14\nLati : ${location.latitude}\nLong : ${location.longitude}\nPrécision : ${location.accuracy/5}\nCap : $bearing ± $bearingAccuracyDegrees\nDate : $parsedDate\nÂge du fix : ${sTime- time!!}s\nVitesse : $speed ± $speedAccuracyMetersPerSecond\n"
         } else{
             "No location"
         }

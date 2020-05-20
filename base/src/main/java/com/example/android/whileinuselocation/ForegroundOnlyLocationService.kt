@@ -49,6 +49,8 @@ class ForegroundOnlyLocationService : Service() {
 
     private var serviceRunningInForeground = false
 
+    private var serviceRunning = false
+
     private var idLocation = 0
 
     private var fileStream: FileOutputStream? = null
@@ -145,7 +147,7 @@ class ForegroundOnlyLocationService : Service() {
                         currentLocation = Localisation(idLocation++, loc,1,2,3)
                         user.addLocation(currentLocation!!)
 
-                        val intent = Intent(ACTION_FOREGROUND_ONLY_LOCATION_BROADCAST)
+                        val intent = Intent(ACTION_SERVICE_LOCATION_BROADCAST_LOCATION)
                         intent.putExtra(EXTRA_LOCATION, currentLocation)
                         LocalBroadcastManager.getInstance(applicationContext).sendBroadcast(intent)
 
@@ -173,33 +175,35 @@ class ForegroundOnlyLocationService : Service() {
                     Log.d(TAG, "Location information isn't available.")
                 }
             }
-
             override fun onLocationAvailability(availability: LocationAvailability?) {
                 super.onLocationAvailability(availability)
+                Log.d(TAG,"onLocationAvailability()")
                 if (availability != null) {
+                    Log.d(TAG,"availability != null")
                     if(!availability.isLocationAvailable) {
-
+                        Log.d(TAG,"!availability.isLocationAvailable")
                         val builderSettingsLocation: LocationSettingsRequest.Builder  = LocationSettingsRequest.Builder()
                             .addLocationRequest(locationRequest)
 
                         val task = LocationServices.getSettingsClient(applicationContext).checkLocationSettings(builderSettingsLocation.build())
 
                         task.addOnSuccessListener { response ->
+                            Log.d(TAG,"task.onSuccess")
                             val states = response.locationSettingsStates
                         }
                         task.addOnFailureListener { e ->
+                            Log.d(TAG,"task.onFailure")
                             if (e is ResolvableApiException) {
                                 try {
                                     //Si le service tourne en premier plan
                                     if(serviceRunningInForeground){
                                         //On lance l'activité pour résoudre le problème
                                         val intent = Intent(applicationContext, MainActivity::class.java)
-                                        intent.putExtra(EXTRA_PENDING_INTENT, e.resolution)
                                         startActivity(intent)
                                     }
                                     else{
                                         //On envoi un message à l'activité pour résoudre le problème
-                                        val intent = Intent(ACTION_FOREGROUND_ONLY_LOCATION_BROADCAST)
+                                        val intent = Intent(ACTION_SERVICE_LOCATION_BROADCAST_CHECK_REQUEST)
                                         intent.putExtra(EXTRA_CHECK_REQUEST, e.resolution)
                                         LocalBroadcastManager.getInstance(applicationContext).sendBroadcast(intent)
                                     }
@@ -214,13 +218,8 @@ class ForegroundOnlyLocationService : Service() {
         }
 
         // TODO Supprimer tous les fichiers (clean up)
-        /*
-        cleanUpFiles()
 
-        Log.d(TAG,"Liste des fichiers sauvegardés : \n")
-        for(f in files){
-            Log.d(TAG,"\t-$f size : ${File(applicationContext.filesDir, f).length()}octets\n")
-        }*/
+        cleanUpFiles()
 
     }
 
@@ -300,6 +299,7 @@ class ForegroundOnlyLocationService : Service() {
         // ensure this Service can be promoted to a foreground service, i.e., the service needs to
         // be officially started (which we do here).
         startService(Intent(applicationContext, ForegroundOnlyLocationService::class.java))
+        serviceRunning = true
 
         try {
             // TODO: Step 1.5, Subscribe to location changes.
@@ -339,7 +339,7 @@ class ForegroundOnlyLocationService : Service() {
             timerHandler.removeCallbacks(timerRunnable);
 
             SharedPreferenceUtil.saveLocationTrackingPref(this, false)
-
+            serviceRunning = false
         } catch (unlikely: SecurityException) {
             SharedPreferenceUtil.saveLocationTrackingPref(this, true)
             Log.e(TAG, "Lost location permissions. Couldn't remove updates. $unlikely")
@@ -398,6 +398,7 @@ class ForegroundOnlyLocationService : Service() {
         notificationCompatBuilder
             .setContentTitle("Envoi du fichier")
             .setContentText("Envoi en cours")
+            .setOngoing(true)
             .setSmallIcon(R.drawable.ic_upload)
             .setDefaults(NotificationCompat.DEFAULT_ALL)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
@@ -408,57 +409,59 @@ class ForegroundOnlyLocationService : Service() {
         //Création de la notification pour afficher l'upload du fichier
         val notificationCompatBuilder = createNotificationUpload()
 
-        // Start a the operation in a background thread
-        Thread(
-            Runnable {
-                Log.d(TAG, "Envoi du fichier : ${filesUploading[0]}")
-                // Do the "lengthy" operation 20 times
-                var incr: Int = 0
-                while (incr <= 100) {
+        if(serviceRunning){
+            // Start a the operation in a background thread
+            Thread(
+                Runnable {
+                    Log.d(TAG, "Envoi du fichier : ${filesUploading[0]}")
+                    // Do the "lengthy" operation 20 times
+                    var incr: Int = 0
+                    while (incr <= 100) {
 
-                    // Sets the progress indicator to a max value, the current completion percentage and "determinate" state
-                    notificationCompatBuilder.setProgress(100, incr, false)
-                    // Displays the progress bar for the first time.
+                        // Sets the progress indicator to a max value, the current completion percentage and "determinate" state
+                        notificationCompatBuilder.setProgress(100, incr, false)
+                        // Displays the progress bar for the first time.
+                        notificationManager.notify(NOTIFICATION_FILE_ID, notificationCompatBuilder.build())
+                        // Sleeps the thread, simulating an operation
+                        try {
+                            // Sleep for 1 second
+                            Thread.sleep(1 * 1000.toLong())
+                        } catch (e: InterruptedException) {
+                            Log.d("TAG", "sleep failure")
+                        }
+                        incr += 5
+                    }
+                    // When the loop is finished, updates the notification
+                    notificationCompatBuilder.setContentText("Download completed") // Removes the progress bar
+                        .setProgress(0, 0, false)
                     notificationManager.notify(NOTIFICATION_FILE_ID, notificationCompatBuilder.build())
-                    // Sleeps the thread, simulating an operation
+
                     try {
                         // Sleep for 1 second
                         Thread.sleep(1 * 1000.toLong())
                     } catch (e: InterruptedException) {
                         Log.d("TAG", "sleep failure")
                     }
-                    incr += 5
-                }
-                // When the loop is finished, updates the notification
-                notificationCompatBuilder.setContentText("Download completed") // Removes the progress bar
-                    .setProgress(0, 0, false)
-                notificationManager.notify(NOTIFICATION_FILE_ID, notificationCompatBuilder.build())
+                    notificationCompatBuilder.setOngoing(false)
 
-                try {
-                    // Sleep for 1 second
-                    Thread.sleep(1 * 1000.toLong())
-                } catch (e: InterruptedException) {
-                    Log.d("TAG", "sleep failure")
-                }
-                notificationCompatBuilder.setOngoing(false)
+                    //Suppression automatique de la notification
+                    notificationManager.notify(NOTIFICATION_FILE_ID, notificationCompatBuilder.build())
+                    notificationManager.cancel(NOTIFICATION_FILE_ID)
 
-                //Suppression automatique de la notification
-                notificationManager.notify(NOTIFICATION_FILE_ID, notificationCompatBuilder.build())
-                notificationManager.cancel(NOTIFICATION_FILE_ID)
+                    //Suppression du fichier une fois uploadé
+                    val s = filesUploading.removeAt(0)
+                    //File(applicationContext.filesDir, s).delete()
 
-                //Suppression du fichier une fois uploadé
-                val s = filesUploading.removeAt(0)
-                //File(applicationContext.filesDir, s).delete()
+                    //Affichage des fichiers dans la mémoire interne
+                    val files = applicationContext.fileList()
+                    Log.d(TAG,"Liste des fichiers dans la mémoire interne après envoi : \n")
+                    for(f in files){
+                        Log.d(TAG,"\t-$f size : ${File(applicationContext.filesDir, f).length()}octets\n")
+                    }
 
-                //Affichage des fichiers dans la mémoire interne
-                val files = applicationContext.fileList()
-                Log.d(TAG,"Liste des fichiers dans la mémoire interne après envoi : \n")
-                for(f in files){
-                    Log.d(TAG,"\t-$f size : ${File(applicationContext.filesDir, f).length()}octets\n")
-                }
-
-            } // Starts the thread by calling the run() method in its Runnable
-        ).start()
+                } // Starts the thread by calling the run() method in its Runnable
+            ).start()
+        }
     }
 
     /*
@@ -490,22 +493,10 @@ class ForegroundOnlyLocationService : Service() {
             notificationManager.createNotificationChannel(notificationChannel)
         }
 
-        // 2. Build the BIG_TEXT_STYLE.
-        val bigTextStyle = NotificationCompat.BigTextStyle()
-            .bigText(mainNotificationText)
-            .setBigContentTitle(titleText)
-
         // 3. Set up main Intent/Pending Intents for notification.
-        val launchActivityIntent = Intent(this, MainActivity::class.java)
+        val launchActivityIntent = Intent(this, MainActivity::class.java).apply { flags = Intent.FLAG_ACTIVITY_NEW_TASK }
 
-        val cancelIntent = Intent(this, ForegroundOnlyLocationService::class.java)
-        cancelIntent.putExtra(EXTRA_CANCEL_LOCATION_TRACKING_FROM_NOTIFICATION, true)
-
-        val servicePendingIntent = PendingIntent.getService(
-            this, 0, cancelIntent, PendingIntent.FLAG_UPDATE_CURRENT)
-
-        val activityPendingIntent = PendingIntent.getActivity(
-            this, 0, launchActivityIntent, 0)
+        val launchActivityPendingIntent: PendingIntent = PendingIntent.getActivity(this,0,launchActivityIntent,0)
 
         // 4. Build and issue the notification.
         // Notification Channel Id is ignored for Android pre O (26).
@@ -513,22 +504,13 @@ class ForegroundOnlyLocationService : Service() {
             NotificationCompat.Builder(applicationContext, NOTIFICATION_CHANNEL_ID)
 
         return notificationCompatBuilder
-            //.setStyle(bigTextStyle)
             .setContentTitle(titleText)
             .setContentText(mainNotificationText)
             .setSmallIcon(R.mipmap.ic_launcher)
             .setDefaults(NotificationCompat.DEFAULT_ALL)
             .setOngoing(true)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .addAction(
-                R.drawable.ic_launch, getString(R.string.launch_activity),
-                activityPendingIntent
-            )
-            .addAction(
-                R.drawable.ic_cancel,
-                getString(R.string.stop_location_updates_button_text),
-                servicePendingIntent
-            )
+            .setContentIntent(launchActivityPendingIntent)
             .build()
     }
 
@@ -546,8 +528,14 @@ class ForegroundOnlyLocationService : Service() {
 
         private const val PACKAGE_NAME = "com.example.android.whileinuselocation"
 
-        internal const val ACTION_FOREGROUND_ONLY_LOCATION_BROADCAST =
+        internal const val ACTION_SERVICE_LOCATION_BROADCAST =
             "$PACKAGE_NAME.action.FOREGROUND_ONLY_LOCATION_BROADCAST"
+
+        internal const val ACTION_SERVICE_LOCATION_BROADCAST_LOCATION =
+            "$PACKAGE_NAME.action.FOREGROUND_ONLY_LOCATION_BROADCAST_LOCATION"
+
+        internal const val ACTION_SERVICE_LOCATION_BROADCAST_CHECK_REQUEST =
+            "$PACKAGE_NAME.action.ACTION_FOREGROUND_ONLY_LOCATION_BROADCAST_CHECK_REQUEST"
 
         internal const val EXTRA_LOCATION = "$PACKAGE_NAME.extra.LOCATION"
 
@@ -555,8 +543,6 @@ class ForegroundOnlyLocationService : Service() {
             "$PACKAGE_NAME.extra.CANCEL_LOCATION_TRACKING_FROM_NOTIFICATION"
 
         internal const val EXTRA_CHECK_REQUEST = "$PACKAGE_NAME.extra.CHECK_REQUEST"
-
-        internal const val EXTRA_PENDING_INTENT = "$PACKAGE_NAME.extra.PENDING_INTENT"
 
         private const val NOTIFICATION_ID = 12345678
 

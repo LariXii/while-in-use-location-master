@@ -17,6 +17,9 @@
 <resources>
     <string name="app_name">Truck Tracker</string>
 
+    <string name="item_darktheme">Theme sombre activé</string>
+    <string name="parametre">Paramètres</string>
+
     <string name="hint_name">Nom</string>
     <string name="hint_tyre_type">Type de roue</string>
     <string name="hint_trailer_axles">Essieu de remorque</string>
