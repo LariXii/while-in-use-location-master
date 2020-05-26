@@ -1,4 +1,4 @@
-package com.example.android.whileinuselocation
+package com.example.android.whileinuselocation.model
 
 import android.location.Location
 import android.os.Parcel
@@ -141,7 +141,9 @@ class Localisation(private val _sequenceNumber: Int, private val location: Locat
 
     companion object CREATOR : Parcelable.Creator<Localisation> {
         override fun createFromParcel(parcel: Parcel): Localisation {
-            return Localisation(parcel)
+            return Localisation(
+                parcel
+            )
         }
 
         override fun newArray(size: Int): Array<Localisation?> {

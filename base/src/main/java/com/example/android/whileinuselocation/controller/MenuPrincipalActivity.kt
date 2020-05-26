@@ -1,20 +1,22 @@
-package com.example.android.whileinuselocation
+package com.example.android.whileinuselocation.controller
 
-import android.content.Context
-import android.content.Intent
-import android.content.SharedPreferences
+import android.content.*
 import android.os.Bundle
 import android.text.Editable
 import android.text.TextWatcher
 import android.util.Log
 import android.view.Menu
 import android.view.MenuItem
-import android.view.View
 import android.widget.EditText
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.isVisible
+import androidx.localbroadcastmanager.content.LocalBroadcastManager
+import com.example.android.whileinuselocation.R
+import com.example.android.whileinuselocation.SharedPreferenceUtil
 import kotlinx.android.synthetic.main.activity_menu_principal.*
+
+private const val TAG = "TruckTracker_Form"
 
 class MenuPrincipalActivity: AppCompatActivity(), TextWatcher, SharedPreferences.OnSharedPreferenceChangeListener {
 
@@ -27,8 +29,14 @@ class MenuPrincipalActivity: AppCompatActivity(), TextWatcher, SharedPreferences
         setContentView(R.layout.activity_menu_principal)
 
         sharedPreferences = getSharedPreferences(getString(R.string.preference_file_key), Context.MODE_PRIVATE)
+
+        if(sharedPreferences.getBoolean(SharedPreferenceUtil.KEY_FOREGROUND_ENABLED,false)){
+            val locationActivity = Intent(this, JourneyActivity::class.java)
+            startActivity(locationActivity)
+            finish()
+        }
+
         sharedPreferences.registerOnSharedPreferenceChangeListener(this)
-        Log.d("Menu","Toutes les préférences à la création de l'activité : ${sharedPreferences.all}")
 
         listTextForm.addAll(listOf(act_menu_txt_nom,act_menu_txt_roue,act_menu_txt_ess_tracteur,act_menu_txt_ess_remorque))
 
@@ -46,16 +54,19 @@ class MenuPrincipalActivity: AppCompatActivity(), TextWatcher, SharedPreferences
         act_menu_txt_roue.addTextChangedListener(this)
 
         //Ajout d'un tag pour chaque champs du formulaire comme étant leur clé pour SharedPreference
-        act_menu_txt_nom.tag = SharedPreferenceUtil.KEY_USER_NAME
-        act_menu_txt_roue.tag = SharedPreferenceUtil.KEY_TYRE_TYPE
-        act_menu_txt_ess_tracteur.tag = SharedPreferenceUtil.KEY_TRACTOR_AXLES
-        act_menu_txt_ess_remorque.tag = SharedPreferenceUtil.KEY_TRAILER_AXLES
+        act_menu_txt_nom.tag =
+            SharedPreferenceUtil.KEY_USER_NAME
+        act_menu_txt_roue.tag =
+            SharedPreferenceUtil.KEY_TYRE_TYPE
+        act_menu_txt_ess_tracteur.tag =
+            SharedPreferenceUtil.KEY_TRACTOR_AXLES
+        act_menu_txt_ess_remorque.tag =
+            SharedPreferenceUtil.KEY_TRAILER_AXLES
 
         //Ajout d'un écouteur de click sur le bouton de validation des informations
         act_menu_btn_valider.setOnClickListener{
-            val locationActivity = Intent(this, MainActivity::class.java)
+            val locationActivity = Intent(this, JourneyActivity::class.java)
             startActivity(locationActivity)
-            finish()
         }
 
         //Ajout d'un écouteur de click sur le bouton de sauvegarde des informations de l'utilisateur
@@ -63,7 +74,11 @@ class MenuPrincipalActivity: AppCompatActivity(), TextWatcher, SharedPreferences
             // TODO Sauvegarder les informations de l'utilisateur
             for(txt in listTextForm){
                 if(txt.text.isNotEmpty()){
-                    SharedPreferenceUtil.saveMenuInfo(this, txt.tag.toString(), txt.text.toString())
+                    SharedPreferenceUtil.saveMenuInfo(
+                        this,
+                        txt.tag.toString(),
+                        txt.text.toString()
+                    )
                 }
             }
             Toast.makeText(this, "Vos informations ont bien été sauvegardé !\n${sharedPreferences.all}" , Toast.LENGTH_SHORT).show()
@@ -72,10 +87,22 @@ class MenuPrincipalActivity: AppCompatActivity(), TextWatcher, SharedPreferences
         //Ajout d'un écouteur de click sur le bouton de suppression des informations de l'utilisateur
         act_menu_btn_del.setOnClickListener{
             // TODO Supprimer les informations de l'utilisateur
-            SharedPreferenceUtil.eraseMenuInfo(this, SharedPreferenceUtil.KEY_USER_NAME)
-            SharedPreferenceUtil.eraseMenuInfo(this, SharedPreferenceUtil.KEY_TYRE_TYPE)
-            SharedPreferenceUtil.eraseMenuInfo(this, SharedPreferenceUtil.KEY_TRACTOR_AXLES)
-            SharedPreferenceUtil.eraseMenuInfo(this, SharedPreferenceUtil.KEY_TRAILER_AXLES)
+            SharedPreferenceUtil.eraseMenuInfo(
+                this,
+                SharedPreferenceUtil.KEY_USER_NAME
+            )
+            SharedPreferenceUtil.eraseMenuInfo(
+                this,
+                SharedPreferenceUtil.KEY_TYRE_TYPE
+            )
+            SharedPreferenceUtil.eraseMenuInfo(
+                this,
+                SharedPreferenceUtil.KEY_TRACTOR_AXLES
+            )
+            SharedPreferenceUtil.eraseMenuInfo(
+                this,
+                SharedPreferenceUtil.KEY_TRAILER_AXLES
+            )
             Toast.makeText(this, "Vos informations ont bien été supprimé !\n${sharedPreferences.all}" , Toast.LENGTH_SHORT).show()
             //Suppression des informations contenues dans les champs de texte
             for(txt in listTextForm){
@@ -88,6 +115,7 @@ class MenuPrincipalActivity: AppCompatActivity(), TextWatcher, SharedPreferences
         }
 
     }
+
     override fun onCreateOptionsMenu(menu: Menu?): Boolean {
         menuInflater.inflate(R.menu.menu_items, menu)
         return super.onCreateOptionsMenu(menu)
@@ -123,4 +151,6 @@ class MenuPrincipalActivity: AppCompatActivity(), TextWatcher, SharedPreferences
                 || sharedPreferences.contains(SharedPreferenceUtil.KEY_TRACTOR_AXLES)
                 || sharedPreferences.contains(SharedPreferenceUtil.KEY_TRAILER_AXLES)
     }
+
 }
+

@@ -13,9 +13,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.example.android.whileinuselocation
+package com.example.android.whileinuselocation.controller
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.app.Activity
 import android.app.PendingIntent
 import android.content.*
@@ -24,22 +25,26 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
 import android.os.IBinder
+import android.os.SystemClock
 import android.provider.Settings
-import android.text.method.ScrollingMovementMethod
 import android.util.Log
+import android.widget.Chronometer
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
+import androidx.core.view.isVisible
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
+import com.example.android.whileinuselocation.BuildConfig
+import com.example.android.whileinuselocation.R
+import com.example.android.whileinuselocation.SharedPreferenceUtil
+import com.example.android.whileinuselocation.model.ServiceInformations
 import com.google.android.gms.common.api.ResolvableApiException
-import com.google.android.gms.location.LocationRequest
-import com.google.android.gms.location.LocationServices
-import com.google.android.gms.location.LocationSettingsRequest
+import com.google.android.gms.location.*
 import com.google.android.material.snackbar.Snackbar
-import kotlinx.android.synthetic.main.activity_main.*
+import kotlinx.android.synthetic.main.activity_journey.*
 
 
-private const val TAG = "PrototypeLocation"
+private const val TAG = "TruckTracker_Journey"
 private const val REQUEST_FOREGROUND_ONLY_PERMISSIONS_REQUEST_CODE = 34
 
 /**
@@ -83,19 +88,19 @@ private const val REQUEST_FOREGROUND_ONLY_PERMISSIONS_REQUEST_CODE = 34
  * activity from the notification. The user can also remove location updates directly from the
  * notification. This dismisses the notification and stops the service.
  */
-class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceChangeListener {
+class JourneyActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceChangeListener {
 
     companion object{
         private const val REQUEST_CHECK_SETTINGS = 1
     }
 
-    private var foregroundOnlyLocationServiceBound = false
+    private var journeyLocationServiceBound = false
 
     // Provides location updates for while-in-use feature.
-    private var foregroundOnlyLocationService: ForegroundOnlyLocationService? = null
+    private var journeyLocationService: JourneyLocationService? = null
 
-    // Listens for location broadcasts from ForegroundOnlyLocationService.
-    private lateinit var foregroundOnlyBroadcastReceiver: ForegroundOnlyBroadcastReceiver
+    // Listens for location broadcasts from JourneyLocationService.
+    private lateinit var journeyLocationServiceBroadcastReceiver: ForegroundOnlyBroadcastReceiver
 
     private lateinit var intentFilterCheckRequest: IntentFilter
     private lateinit var intentFilterLocation: IntentFilter
@@ -106,33 +111,38 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     private lateinit var outputTextView: TextView
 
     // Monitors connection to the while-in-use service.
-    private val foregroundOnlyServiceConnection = object : ServiceConnection {
+    private val journeyLocationServiceConnection = object : ServiceConnection {
 
         override fun onServiceConnected(name: ComponentName, service: IBinder) {
-            val binder = service as ForegroundOnlyLocationService.LocalBinder
-            foregroundOnlyLocationService = binder.service
-            foregroundOnlyLocationServiceBound = true
+            val binder = service as JourneyLocationService.LocalBinder
+            journeyLocationService = binder.service
+            journeyLocationServiceBound = true
+            Log.d(TAG, "Le service tourne : ${journeyLocationService!!.serviceRunning}")
+            //Lors du bind au service change les préférences si celui-ci n'est pas en train de tourner (arrive lors de la relance de l'application via Android Studio)
+            SharedPreferenceUtil.saveLocationTrackingPref(applicationContext,journeyLocationService!!.serviceRunning)
+
+            updateButtonState(
+                sharedPreferences.getBoolean(SharedPreferenceUtil.KEY_FOREGROUND_ENABLED, false)
+            )
         }
 
         override fun onServiceDisconnected(name: ComponentName) {
-            foregroundOnlyLocationService = null
-            foregroundOnlyLocationServiceBound = false
+            journeyLocationService = null
+            journeyLocationServiceBound = false
         }
     }
 
     //Au lancement de l'application
     override fun onCreate(savedInstanceState: Bundle?) {
+        //Log.d(TAG,"onCreate Activity")
+
         super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_journey)
 
-        setContentView(R.layout.activity_main)
-
-        foregroundOnlyBroadcastReceiver = ForegroundOnlyBroadcastReceiver()
+        journeyLocationServiceBroadcastReceiver = ForegroundOnlyBroadcastReceiver()
 
         sharedPreferences =
             getSharedPreferences(getString(R.string.preference_file_key), Context.MODE_PRIVATE)
-
-        // Liaison des composants de l'interface avec le controller
-        outputTextView = findViewById(R.id.output_text_view)
 
         // Listener onClick sur le bouton de lancement/arrêt des updates de localisations
         foreground_only_location_button.setOnClickListener {
@@ -142,12 +152,12 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             //Si la récupération des localisations était en cours on l'arrête
             if (enabled) {
                 //Lors d'un prochain clic on stop l'update de la localisation
-                foregroundOnlyLocationService?.unsubscribeToLocationUpdates()
+                journeyLocationService?.unsubscribeToLocationUpdates()
             } else {
                 // TODO: Step 1.0, Review Permissions: Checks and requests if needed.
                 // Si la permission de localisation est approuvé, on lance la récupération des localisations
                 if (foregroundPermissionApproved()) {
-                    foregroundOnlyLocationService?.subscribeToLocationUpdates()
+                    journeyLocationService?.subscribeToLocationUpdates()
                         ?: Log.d(TAG, "Service Not Bound")
                 }
                 // Sinon on envoi la demande de permission
@@ -157,62 +167,60 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             }
         }
 
-        val scrollable = output_text_view
-        scrollable.movementMethod = ScrollingMovementMethod();
-
+        //Perform a locationSettingsRequest to get the locationSettingsStates
         requestLocationSettingsEnable()
     }
 
     override fun onStart() {
         super.onStart()
-        Log.d(TAG,"onStart Activity")
-        updateButtonState(
-            sharedPreferences.getBoolean(SharedPreferenceUtil.KEY_FOREGROUND_ENABLED, false)
-        )
+        //Log.d(TAG,"onStart Activity")
+
         //Lors d'un changement d'une préférence appelle un listener qui est this
         sharedPreferences.registerOnSharedPreferenceChangeListener(this)
 
         //Liaison du service de localisation avec l'activité principale
-        val serviceIntent = Intent(this, ForegroundOnlyLocationService::class.java)
-        bindService(serviceIntent, foregroundOnlyServiceConnection, Context.BIND_AUTO_CREATE)
+        val serviceIntent = Intent(this, JourneyLocationService::class.java)
+        bindService(serviceIntent, journeyLocationServiceConnection, Context.BIND_AUTO_CREATE)
     }
 
     override fun onResume() {
         super.onResume()
-        Log.d(TAG,"onResume Activity")
-        intentFilterLocation = IntentFilter(ForegroundOnlyLocationService.ACTION_SERVICE_LOCATION_BROADCAST_LOCATION)
-        intentFilterCheckRequest = IntentFilter(ForegroundOnlyLocationService.ACTION_SERVICE_LOCATION_BROADCAST_CHECK_REQUEST)
+        //Log.d(TAG,"onResume Activity")
+        intentFilterLocation = IntentFilter(JourneyLocationService.ACTION_SERVICE_LOCATION_BROADCAST_INFORMATIONS)
+        intentFilterCheckRequest = IntentFilter(JourneyLocationService.ACTION_SERVICE_LOCATION_BROADCAST_CHECK_REQUEST)
         LocalBroadcastManager.getInstance(this).registerReceiver(
-            foregroundOnlyBroadcastReceiver,intentFilterLocation
+            journeyLocationServiceBroadcastReceiver,intentFilterLocation
         )
         LocalBroadcastManager.getInstance(this).registerReceiver(
-            foregroundOnlyBroadcastReceiver,intentFilterCheckRequest
+            journeyLocationServiceBroadcastReceiver,intentFilterCheckRequest
         )
 
     }
 
     override fun onPause() {
-        Log.d(TAG,"onPause Activity")
-        LocalBroadcastManager.getInstance(this).unregisterReceiver(
-            foregroundOnlyBroadcastReceiver
-        )
+        //Log.d(TAG,"onPause Activity")
+        /*LocalBroadcastManager.getInstance(this).unregisterReceiver(
+            journeyLocationServiceBroadcastReceiver
+        )*/
         super.onPause()
     }
 
     override fun onStop() {
-        Log.d(TAG,"onStop Activity")
-        if (foregroundOnlyLocationServiceBound) {
-            unbindService(foregroundOnlyServiceConnection)
-            foregroundOnlyLocationServiceBound = false
+        //Log.d(TAG,"onStop Activity")
+        if (journeyLocationServiceBound) {
+            unbindService(journeyLocationServiceConnection)
+            journeyLocationServiceBound = false
         }
         //Enlève le listener associé aux changements de préférences
         sharedPreferences.unregisterOnSharedPreferenceChangeListener(this)
-
+        LocalBroadcastManager.getInstance(this).unregisterReceiver(
+            journeyLocationServiceBroadcastReceiver
+        )
         super.onStop()
     }
 
     override fun onDestroy() {
-        Log.d(TAG,"Activité principale est détruite")
+        //Log.d(TAG,"Activité principale est détruite")
         super.onDestroy()
     }
 
@@ -249,7 +257,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 .setAction(R.string.ok) {
                     // Request permission
                     ActivityCompat.requestPermissions(
-                        this@MainActivity,
+                        this@JourneyActivity,
                         arrayOf(Manifest.permission.ACCESS_FINE_LOCATION),
                         REQUEST_FOREGROUND_ONLY_PERMISSIONS_REQUEST_CODE
                     )
@@ -258,7 +266,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
         } else {
             Log.d(TAG, "Request foreground only permission")
             ActivityCompat.requestPermissions(
-                this@MainActivity,
+                this@JourneyActivity,
                 arrayOf(Manifest.permission.ACCESS_FINE_LOCATION),
                 REQUEST_FOREGROUND_ONLY_PERMISSIONS_REQUEST_CODE
             )
@@ -282,7 +290,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
                 grantResults[0] == PackageManager.PERMISSION_GRANTED ->
                     // Permission was granted.
-                    foregroundOnlyLocationService?.subscribeToLocationUpdates()
+                    journeyLocationService?.subscribeToLocationUpdates()
 
                 else -> {
                     // Permission denied.
@@ -323,33 +331,45 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
         task.addOnSuccessListener { response ->
             val states = response.locationSettingsStates
-            if (states.isLocationPresent) {
-                Log.d(TAG,"La localisation est activé")
-            }
+            journeyLocationService?.setServiceInformationsStates(states)
         }
         task.addOnFailureListener { e ->
             if (e is ResolvableApiException) {
                 try {
                     Log.d(TAG,"La localisation n'est pas activé envoi d'une résolution")
                     // Handle result in onActivityResult()
-                    e.startResolutionForResult(this, REQUEST_CHECK_SETTINGS)
+                    e.startResolutionForResult(this,
+                        REQUEST_CHECK_SETTINGS
+                    )
                 } catch (sendEx: IntentSender.SendIntentException) { }
             }
         }
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        //val states: LocationSettingsStates = LocationSettingsStates.fromIntent(intent)
+        val states: LocationSettingsStates = LocationSettingsStates.fromIntent(data)
         when(requestCode) {
             REQUEST_CHECK_SETTINGS ->
             when (resultCode) {
                 Activity.RESULT_OK -> {
                     // All required changes were successfully made
-
+                    journeyLocationService?.setServiceInformationsStates(states)
                 }
                 Activity.RESULT_CANCELED -> {
-
-
+                    updateButtonState(false)
+                    journeyLocationService?.setServiceInformationsStates(states)
+                    Snackbar.make(
+                        findViewById(R.id.activity_main),
+                        R.string.permission_denied_explanation,
+                        Snackbar.LENGTH_LONG
+                    )
+                        .setAction(R.string.settings) {
+                            // Build intent that displays the App settings screen.
+                            val intent = Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS)
+                            intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                            startActivity(intent)
+                        }
+                        .show()
                 }
                 else -> {
 
@@ -363,40 +383,52 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
      */
     private fun updateButtonState(trackingLocation: Boolean) {
         foreground_only_location_button.isChecked = trackingLocation
+        if(trackingLocation){
+            (chronometer_text as Chronometer).base = journeyLocationService!!.getTimeStart()
+            (chronometer_text as Chronometer).start()
+        }
+        else{
+            (chronometer_text as Chronometer).base = SystemClock.elapsedRealtime()
+            (chronometer_text as Chronometer).stop()
+        }
     }
 
     /**
      * Fonction pour afficher les résultats de localisations.
      * Récupère le texte déjà présent dans la zone de texte et rajoute le nouveau texte
      */
-    private fun logResultsToScreen(output:String) {
-        val outputWithPreviousLogs = "$output\n${outputTextView.text}"
-        outputTextView.text = outputWithPreviousLogs
+    private fun serviceInformationsToScreen(serviceInfos: ServiceInformations) {
+        if(serviceInfos.locationSettingsStates != null){
+            gps_state_text.text = if(serviceInfos.locationSettingsStates!!.isGpsPresent) "Activé" else "Désactivé"
+            gps_unable_text.text = if(serviceInfos.locationSettingsStates!!.isGpsUsable) "Activé" else "Désactivé"
+        }
+        number_loc_text.text = serviceInfos.numberOfLocalisation().toString()
+        send_file_text.isVisible = serviceInfos.isSending
     }
 
     /**
-     * Receiver for location broadcasts from [ForegroundOnlyLocationService].
+     * Receiver for location broadcasts from [JourneyLocationService].
      */
     private inner class ForegroundOnlyBroadcastReceiver : BroadcastReceiver() {
 
         override fun onReceive(context: Context, intent: Intent) {
             when(intent.action){
                 // LOCATION
-                ForegroundOnlyLocationService.ACTION_SERVICE_LOCATION_BROADCAST_LOCATION -> {
-                    Log.d(TAG,"ACTION_SERVICE_LOCATION_BROADCAST_LOCATION")
-                    val location = intent.getParcelableExtra<Localisation>(
-                        ForegroundOnlyLocationService.EXTRA_LOCATION
+                JourneyLocationService.ACTION_SERVICE_LOCATION_BROADCAST_INFORMATIONS -> {
+                    //Log.d(TAG,"ACTION_SERVICE_LOCATION_BROADCAST_INFORMATIONS")
+                    val serviceInfos = intent.getParcelableExtra<ServiceInformations>(
+                        JourneyLocationService.EXTRA_INFORMATIONS
                     )
 
-                    if (location != null) {
-                        logResultsToScreen("--------------------------\n$location\n--------------------------")
+                    if (serviceInfos != null) {
+                        serviceInformationsToScreen(serviceInfos)
                     }
                 }
                 // CHECK_REQUEST
-                ForegroundOnlyLocationService.ACTION_SERVICE_LOCATION_BROADCAST_CHECK_REQUEST -> {
-                    Log.d(TAG,"ACTION_SERVICE_LOCATION_BROADCAST_CHECK_REQUEST")
+                JourneyLocationService.ACTION_SERVICE_LOCATION_BROADCAST_CHECK_REQUEST -> {
+                    //Log.d(TAG,"ACTION_SERVICE_LOCATION_BROADCAST_CHECK_REQUEST")
                     val pendingIntent = intent.getParcelableExtra<PendingIntent>(
-                        ForegroundOnlyLocationService.EXTRA_CHECK_REQUEST
+                        JourneyLocationService.EXTRA_CHECK_REQUEST
                     )
                     Log.d(TAG,"Intent : $pendingIntent")
 

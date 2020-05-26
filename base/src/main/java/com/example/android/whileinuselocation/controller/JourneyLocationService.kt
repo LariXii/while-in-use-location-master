@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.example.android.whileinuselocation
+package com.example.android.whileinuselocation.controller
 
 import android.app.*
 import android.content.Context
@@ -24,13 +24,17 @@ import android.os.*
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
+import com.example.android.whileinuselocation.R
+import com.example.android.whileinuselocation.SharedPreferenceUtil
+import com.example.android.whileinuselocation.model.Journey
+import com.example.android.whileinuselocation.model.ServiceInformations
+import com.example.android.whileinuselocation.model.Localisation
 import com.google.android.gms.common.api.ResolvableApiException
 import com.google.android.gms.location.*
 import java.io.File
 import java.io.FileOutputStream
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
-
 
 /**
  * Service tracks location when requested and updates Activity via binding. If Activity is
@@ -40,7 +44,7 @@ import java.time.format.DateTimeFormatter
  * For apps running in the background on O+ devices, location is computed much less than previous
  * versions. Please reference documentation for details.
  */
-class ForegroundOnlyLocationService : Service() {
+class JourneyLocationService : Service() {
     /*
      * Checks whether the bound activity has really gone away (foreground service with notification
      * created) or simply orientation change (no-op).
@@ -49,17 +53,19 @@ class ForegroundOnlyLocationService : Service() {
 
     private var serviceRunningInForeground = false
 
-    private var serviceRunning = false
+    var serviceRunning = false
 
     private var idLocation = 0
 
+    // ########################### FILES ########################### //
     private var fileStream: FileOutputStream? = null
 
     private lateinit var fileWriting: String
 
     private val filesUploading: MutableList<String> = mutableListOf()
+    // ############################################################# //
 
-    private lateinit var user: User
+    private lateinit var serviceInformations: ServiceInformations
 
     private val localBinder = LocalBinder()
 
@@ -80,6 +86,8 @@ class ForegroundOnlyLocationService : Service() {
     // database, but because this is a simplified sample without a full database, we only need the
     // last location to create a Notification if the user navigates away from the app.
     private var currentLocation: Localisation? = null
+
+    private var journey: Journey? = null
 
     var timerHandler: Handler = Handler()
     private var timerRunnable: Runnable = object : Runnable {
@@ -106,6 +114,7 @@ class ForegroundOnlyLocationService : Service() {
         Log.d(TAG, "onCreate()")
 
         notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        serviceInformations = ServiceInformations()
 
         // TODO: Step 1.2, Review the FusedLocationProviderClient.
         fusedLocationProviderClient = LocationServices.getFusedLocationProviderClient(this)
@@ -144,12 +153,19 @@ class ForegroundOnlyLocationService : Service() {
                 if (locationResult?.locations != null) {
 
                     for(loc in locationResult.locations){
-                        currentLocation = Localisation(idLocation++, loc,1,2,3)
-                        user.addLocation(currentLocation!!)
+                        currentLocation =
+                            Localisation(
+                                idLocation++,
+                                loc,
+                                1,
+                                2,
+                                3
+                            )
+                        journey!!.addLocation(currentLocation!!)
+                        serviceInformations.addLocation(currentLocation!!)
+                        serviceInformations.isFromMockProvider = loc.isFromMockProvider
 
-                        val intent = Intent(ACTION_SERVICE_LOCATION_BROADCAST_LOCATION)
-                        intent.putExtra(EXTRA_LOCATION, currentLocation)
-                        LocalBroadcastManager.getInstance(applicationContext).sendBroadcast(intent)
+                        broadCastServiceInformations()
 
                         // Ecriture des localisations dans le fichier interne ouvert
                         fileStream?.write(currentLocation!!.toMAPM().toByteArray())
@@ -161,7 +177,7 @@ class ForegroundOnlyLocationService : Service() {
                     //currentLocation = Localisation(idLocation++, locationResult.lastLocation)
                     //user.addLocation(currentLocation!!)
 
-                    Log.d(TAG, "Nombre de localisation récupérés : ${user.numberOfLocalisation()}")
+                    Log.d(TAG, "Nombre de localisation récupérés : ${serviceInformations.numberOfLocalisation()}")
                     // Notify our Activity that a new location was added. Again, if this was a
                     // production app, the Activity would be listening for changes to a database
                     // with new locations, but we are simplifying things a bit to focus on just
@@ -177,33 +193,37 @@ class ForegroundOnlyLocationService : Service() {
             }
             override fun onLocationAvailability(availability: LocationAvailability?) {
                 super.onLocationAvailability(availability)
-                Log.d(TAG,"onLocationAvailability()")
+                //Log.d(TAG,"onLocationAvailability()")
                 if (availability != null) {
-                    Log.d(TAG,"availability != null")
+                    //Log.d(TAG,"availability != null")
                     if(!availability.isLocationAvailable) {
-                        Log.d(TAG,"!availability.isLocationAvailable")
+                        //Log.d(TAG,"!availability.isLocationAvailable")
                         val builderSettingsLocation: LocationSettingsRequest.Builder  = LocationSettingsRequest.Builder()
                             .addLocationRequest(locationRequest)
 
                         val task = LocationServices.getSettingsClient(applicationContext).checkLocationSettings(builderSettingsLocation.build())
 
                         task.addOnSuccessListener { response ->
-                            Log.d(TAG,"task.onSuccess")
+                            //Log.d(TAG,"task.onSuccess")
                             val states = response.locationSettingsStates
+                            serviceInformations.locationSettingsStates = states
+                            broadCastServiceInformations()
                         }
                         task.addOnFailureListener { e ->
-                            Log.d(TAG,"task.onFailure")
+                            //Log.d(TAG,"task.onFailure")
                             if (e is ResolvableApiException) {
                                 try {
                                     //Si le service tourne en premier plan
                                     if(serviceRunningInForeground){
                                         //On lance l'activité pour résoudre le problème
-                                        val intent = Intent(applicationContext, MainActivity::class.java)
+                                        val intent = Intent(applicationContext, JourneyActivity::class.java)
                                         startActivity(intent)
                                     }
                                     else{
                                         //On envoi un message à l'activité pour résoudre le problème
-                                        val intent = Intent(ACTION_SERVICE_LOCATION_BROADCAST_CHECK_REQUEST)
+                                        val intent = Intent(
+                                            ACTION_SERVICE_LOCATION_BROADCAST_CHECK_REQUEST
+                                        )
                                         intent.putExtra(EXTRA_CHECK_REQUEST, e.resolution)
                                         LocalBroadcastManager.getInstance(applicationContext).sendBroadcast(intent)
                                     }
@@ -218,7 +238,6 @@ class ForegroundOnlyLocationService : Service() {
         }
 
         // TODO Supprimer tous les fichiers (clean up)
-
         cleanUpFiles()
 
     }
@@ -269,7 +288,10 @@ class ForegroundOnlyLocationService : Service() {
         // to maintain the 'while-in-use' label.
         // NOTE: If this method is called due to a configuration change in MainActivity,
         // we do nothing.
-        if (!configurationChange && SharedPreferenceUtil.getLocationTrackingPref(this)) {
+        if (!configurationChange && SharedPreferenceUtil.getLocationTrackingPref(
+                this
+            )
+        ) {
             Log.d(TAG, "Start foreground service")
             val notification = generateNotification(null)
             startForeground(NOTIFICATION_ID, notification)
@@ -293,25 +315,35 @@ class ForegroundOnlyLocationService : Service() {
     fun subscribeToLocationUpdates() {
         Log.d(TAG, "subscribeToLocationUpdates()")
 
-        SharedPreferenceUtil.saveLocationTrackingPref(this, true)
+        journey = Journey()
+        journey!!.startJourney()
+
+        serviceInformations.startTime = SystemClock.elapsedRealtime()
+        SharedPreferenceUtil.saveLocationTrackingPref(
+            this,
+            true
+        )
 
         // Binding to this service doesn't actually trigger onStartCommand(). That is needed to
         // ensure this Service can be promoted to a foreground service, i.e., the service needs to
         // be officially started (which we do here).
-        startService(Intent(applicationContext, ForegroundOnlyLocationService::class.java))
+        startService(Intent(applicationContext, JourneyLocationService::class.java))
         serviceRunning = true
 
         try {
             // TODO: Step 1.5, Subscribe to location changes.
             fusedLocationProviderClient.requestLocationUpdates(locationRequest, locationCallback, Looper.myLooper())
 
-            user = User("Test",1,4,2)
+            //Start the timer for send all 5 min a MAPM file
             timerHandler.postDelayed(timerRunnable, (TIME_TO_WAIT_BEFORE_SEND_MAPM * 1000 * 60).toLong());
 
             createFileToWrite()
 
         } catch (unlikely: SecurityException) {
-            SharedPreferenceUtil.saveLocationTrackingPref(this, false)
+            SharedPreferenceUtil.saveLocationTrackingPref(
+                this,
+                false
+            )
             Log.e(TAG, "Lost location permissions. Couldn't remove updates. $unlikely")
         }
     }
@@ -325,7 +357,7 @@ class ForegroundOnlyLocationService : Service() {
             removeTask.addOnCompleteListener { task ->
                 if (task.isSuccessful) {
                     Log.d(TAG, "Location Callback removed.")
-                    //stopSelf()
+                    stopSelf()
                 } else {
                     Log.d(TAG, "Failed to remove Location Callback.")
                 }
@@ -338,12 +370,34 @@ class ForegroundOnlyLocationService : Service() {
 
             timerHandler.removeCallbacks(timerRunnable);
 
-            SharedPreferenceUtil.saveLocationTrackingPref(this, false)
+            journey!!.stopJourney()
+            Log.d(TAG, journey.toString())
+
+            SharedPreferenceUtil.saveLocationTrackingPref(
+                this,
+                false
+            )
             serviceRunning = false
         } catch (unlikely: SecurityException) {
-            SharedPreferenceUtil.saveLocationTrackingPref(this, true)
+            SharedPreferenceUtil.saveLocationTrackingPref(
+                this,
+                true
+            )
             Log.e(TAG, "Lost location permissions. Couldn't remove updates. $unlikely")
         }
+    }
+
+    fun getTimeStart(): Long{
+        return serviceInformations.startTime
+    }
+
+    fun setServiceInformationsStates(states: LocationSettingsStates){
+        serviceInformations.locationSettingsStates = states
+        /*Log.d(TAG,"isLocationUsable : ${serviceInformations.locationSettingsStates?.isLocationUsable}")
+        Log.d(TAG,"isLocationPresent : ${serviceInformations.locationSettingsStates?.isLocationPresent}")
+        Log.d(TAG,"isGpsPresent : ${serviceInformations.locationSettingsStates?.isGpsPresent}")
+        Log.d(TAG,"isGpsUsable : ${serviceInformations.locationSettingsStates?.isGpsUsable}")*/
+        broadCastServiceInformations()
     }
 
     private fun createFileToWrite(){
@@ -377,7 +431,7 @@ class ForegroundOnlyLocationService : Service() {
         val parsedDate: String = date.format(dateFormatter)
         val parsedTime: String = date.format(timeFormatter)
         //Création du nom du fichier
-        return "${parsedDate}_${parsedTime}_${TYPE_FILE}_${CREATOR_ID}_${CHECK_SUM_ID}.$EXTENSION"
+        return "${parsedDate}_${parsedTime}_${TYPE_FILE}_${CREATOR_ID}_$CHECK_SUM_ID.$EXTENSION"
     }
 
     private fun createNotificationUpload(): NotificationCompat.Builder{
@@ -393,7 +447,9 @@ class ForegroundOnlyLocationService : Service() {
         }
 
         val notificationCompatBuilder =
-            NotificationCompat.Builder(applicationContext, NOTIFICATION_CHANNEL_ID)
+            NotificationCompat.Builder(applicationContext,
+                NOTIFICATION_CHANNEL_ID
+            )
 
         notificationCompatBuilder
             .setContentTitle("Envoi du fichier")
@@ -414,6 +470,8 @@ class ForegroundOnlyLocationService : Service() {
             Thread(
                 Runnable {
                     Log.d(TAG, "Envoi du fichier : ${filesUploading[0]}")
+                    serviceInformations.isSending = true
+                    broadCastServiceInformations()
                     // Do the "lengthy" operation 20 times
                     var incr: Int = 0
                     while (incr <= 100) {
@@ -458,10 +516,17 @@ class ForegroundOnlyLocationService : Service() {
                     for(f in files){
                         Log.d(TAG,"\t-$f size : ${File(applicationContext.filesDir, f).length()}octets\n")
                     }
-
+                    serviceInformations.isSending = false
+                    broadCastServiceInformations()
                 } // Starts the thread by calling the run() method in its Runnable
             ).start()
         }
+    }
+
+    private fun broadCastServiceInformations(){
+        val intent = Intent(ACTION_SERVICE_LOCATION_BROADCAST_INFORMATIONS)
+        intent.putExtra(EXTRA_INFORMATIONS, serviceInformations)
+        LocalBroadcastManager.getInstance(applicationContext).sendBroadcast(intent)
     }
 
     /*
@@ -494,14 +559,16 @@ class ForegroundOnlyLocationService : Service() {
         }
 
         // 3. Set up main Intent/Pending Intents for notification.
-        val launchActivityIntent = Intent(this, MainActivity::class.java).apply { flags = Intent.FLAG_ACTIVITY_NEW_TASK }
+        val launchActivityIntent = Intent(this, JourneyActivity::class.java)//.apply { flags = Intent.FLAG_ACTIVITY_NEW_TASK }
 
         val launchActivityPendingIntent: PendingIntent = PendingIntent.getActivity(this,0,launchActivityIntent,0)
 
         // 4. Build and issue the notification.
         // Notification Channel Id is ignored for Android pre O (26).
         val notificationCompatBuilder =
-            NotificationCompat.Builder(applicationContext, NOTIFICATION_CHANNEL_ID)
+            NotificationCompat.Builder(applicationContext,
+                NOTIFICATION_CHANNEL_ID
+            )
 
         return notificationCompatBuilder
             .setContentTitle(titleText)
@@ -519,25 +586,25 @@ class ForegroundOnlyLocationService : Service() {
      * clients, we don't need to deal with IPC.
      */
     inner class LocalBinder : Binder() {
-        internal val service: ForegroundOnlyLocationService
-            get() = this@ForegroundOnlyLocationService
+        internal val service: JourneyLocationService
+            get() = this@JourneyLocationService
     }
 
     companion object {
-        private const val TAG = "ForegroundOnlyLocationService"
+        private const val TAG = "TruckTracker_JourneyService"
 
         private const val PACKAGE_NAME = "com.example.android.whileinuselocation"
 
         internal const val ACTION_SERVICE_LOCATION_BROADCAST =
             "$PACKAGE_NAME.action.FOREGROUND_ONLY_LOCATION_BROADCAST"
 
-        internal const val ACTION_SERVICE_LOCATION_BROADCAST_LOCATION =
+        internal const val ACTION_SERVICE_LOCATION_BROADCAST_INFORMATIONS =
             "$PACKAGE_NAME.action.FOREGROUND_ONLY_LOCATION_BROADCAST_LOCATION"
 
         internal const val ACTION_SERVICE_LOCATION_BROADCAST_CHECK_REQUEST =
             "$PACKAGE_NAME.action.ACTION_FOREGROUND_ONLY_LOCATION_BROADCAST_CHECK_REQUEST"
 
-        internal const val EXTRA_LOCATION = "$PACKAGE_NAME.extra.LOCATION"
+        internal const val EXTRA_INFORMATIONS = "$PACKAGE_NAME.extra.LOCATION"
 
         private const val EXTRA_CANCEL_LOCATION_TRACKING_FROM_NOTIFICATION =
             "$PACKAGE_NAME.extra.CANCEL_LOCATION_TRACKING_FROM_NOTIFICATION"

@@ -38,6 +38,12 @@
 
     <string name="start_location_updates_button_text">Start receiving location updates</string>
     <string name="stop_location_updates_button_text">Stop receiving location updates</string>
+    <string name="journey_time">Temps du trajet : </string>
+    <string name="gps_unable">Le GPS est activé : </string>
+    <string name="gps_state">Etat du réseau GPS : </string>
+    <string name="location_number">Nombre de localisations reçu : </string>
+    <string name="send_file">Envoi d\'un fichier en cours… </string>
+    <string name="unknow">Inconnu</string>
 
     <string name="location_updated">Location Updated: %1$s</string>
 
@@ -46,4 +52,5 @@
 
     <string name="notification">Prototype de localisation est exécuté en arrière-plan</string>
     <string name="notification_file">Envoi du fichier MAPM</string>
+
 </resources>
