@@ -53,4 +53,6 @@
     <string name="notification">Prototype de localisation est exécuté en arrière-plan</string>
     <string name="notification_file">Envoi du fichier MAPM</string>
 
+    <string name="message_fin">Fin du trajet</string>
+
 </resources>

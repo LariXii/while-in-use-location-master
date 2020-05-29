@@ -16,16 +16,16 @@
 package com.example.android.whileinuselocation.controller
 
 import android.app.*
-import android.content.Context
-import android.content.Intent
-import android.content.IntentSender
+import android.content.*
 import android.content.res.Configuration
+import android.location.LocationManager
 import android.os.*
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import com.example.android.whileinuselocation.R
 import com.example.android.whileinuselocation.SharedPreferenceUtil
+import com.example.android.whileinuselocation.model.MyFileUtils
 import com.example.android.whileinuselocation.model.Journey
 import com.example.android.whileinuselocation.model.ServiceInformations
 import com.example.android.whileinuselocation.model.Localisation
@@ -33,8 +33,6 @@ import com.google.android.gms.common.api.ResolvableApiException
 import com.google.android.gms.location.*
 import java.io.File
 import java.io.FileOutputStream
-import java.time.LocalDateTime
-import java.time.format.DateTimeFormatter
 
 /**
  * Service tracks location when requested and updates Activity via binding. If Activity is
@@ -57,8 +55,12 @@ class JourneyLocationService : Service() {
 
     private var idLocation = 0
 
+    private var noFixHappened = 0
+
     // ########################### FILES ########################### //
     private var fileStream: FileOutputStream? = null
+
+    private var fileStreamEvent: FileOutputStream? = null
 
     private lateinit var fileWriting: String
 
@@ -70,6 +72,10 @@ class JourneyLocationService : Service() {
     private val localBinder = LocalBinder()
 
     private lateinit var notificationManager: NotificationManager
+
+    private lateinit var locationManager: LocationManager
+
+    private val contextServiceBroadcastReceiver = ContextServiceBroadcastReceiver()
 
     // TODO: Step 1.1, Review variables (no changes).
     // FusedLocationProviderClient - Main class for receiving location updates.
@@ -114,6 +120,15 @@ class JourneyLocationService : Service() {
         Log.d(TAG, "onCreate()")
 
         notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
+
+        registerReceiver(contextServiceBroadcastReceiver, IntentFilter(LocationManager.MODE_CHANGED_ACTION))
+        registerReceiver(contextServiceBroadcastReceiver, IntentFilter(Intent.ACTION_BATTERY_LOW))
+        registerReceiver(contextServiceBroadcastReceiver, IntentFilter(Intent.ACTION_BATTERY_OKAY))
+        //registerReceiver(contextServiceBroadcastReceiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+
+        Log.d(TAG,"Pourcentage de batterie :  ${getBatteryPercentage(applicationContext)}")
+
         serviceInformations = ServiceInformations()
 
         // TODO: Step 1.2, Review the FusedLocationProviderClient.
@@ -161,10 +176,16 @@ class JourneyLocationService : Service() {
                                 2,
                                 3
                             )
+
                         journey!!.addLocation(currentLocation!!)
                         serviceInformations.addLocation(currentLocation!!)
-                        serviceInformations.isFromMockProvider = loc.isFromMockProvider
 
+                        if(loc.isFromMockProvider){
+                            serviceInformations.isFromMockProvider = loc.isFromMockProvider
+                            fileStreamEvent?.write("10999 GPS From mock provider\n".toByteArray())
+                        }
+
+                        Log.d(TAG,"FromMockprovider : ${serviceInformations.isFromMockProvider}")
                         broadCastServiceInformations()
 
                         // Ecriture des localisations dans le fichier interne ouvert
@@ -238,13 +259,14 @@ class JourneyLocationService : Service() {
         }
 
         // TODO Supprimer tous les fichiers (clean up)
-        cleanUpFiles()
+        //cleanUpFiles()
 
     }
 
     override fun onStartCommand(intent: Intent, flags: Int, startId: Int): Int {
         Log.d(TAG, "onStartCommand()")
         //Valeur de la clé extra CANCEL_LOCATION_TRACKING_FROM_NOTIFICATION
+        // TODO DEPRECATED
         val cancelLocationTrackingFromNotification =
             intent.getBooleanExtra(EXTRA_CANCEL_LOCATION_TRACKING_FROM_NOTIFICATION, false)
 
@@ -252,8 +274,6 @@ class JourneyLocationService : Service() {
         if (cancelLocationTrackingFromNotification) {
             //Arrêt des requêtes de localisation
             unsubscribeToLocationUpdates()
-            //Arrêt du service
-            stopSelf()
         }
         // Tells the system not to recreate the service after it's been killed.
         return START_NOT_STICKY
@@ -337,7 +357,13 @@ class JourneyLocationService : Service() {
             //Start the timer for send all 5 min a MAPM file
             timerHandler.postDelayed(timerRunnable, (TIME_TO_WAIT_BEFORE_SEND_MAPM * 1000 * 60).toLong());
 
+            //Création du fichier MAPM
             createFileToWrite()
+
+            // Création du fichier d'événements
+            val name = MyFileUtils.nameFiles(MyFileUtils.TYPE_EVNT, MyFileUtils.CSV_EXT)
+            File(applicationContext.filesDir, name)
+            fileStreamEvent = applicationContext.openFileOutput(name, Context.MODE_PRIVATE)
 
         } catch (unlikely: SecurityException) {
             SharedPreferenceUtil.saveLocationTrackingPref(
@@ -357,27 +383,29 @@ class JourneyLocationService : Service() {
             removeTask.addOnCompleteListener { task ->
                 if (task.isSuccessful) {
                     Log.d(TAG, "Location Callback removed.")
-                    stopSelf()
+                    //stopSelf()
                 } else {
                     Log.d(TAG, "Failed to remove Location Callback.")
                 }
             }
 
-            // Fermeture du fichier interne
+            // Arrêt du chronomètre d'envoi des fichiers
+            timerHandler.removeCallbacks(timerRunnable)
+
+            // Fermeture des streams des fichiers MAPM et EVNT
             fileStream?.close()
+            fileStreamEvent?.close()
+
             // Envoi du fichier en cours d'écriture à la fin du service
             uploadFile()
 
-            timerHandler.removeCallbacks(timerRunnable);
-
+            // Arrêt du trajet
             journey!!.stopJourney()
-            Log.d(TAG, journey.toString())
 
-            SharedPreferenceUtil.saveLocationTrackingPref(
-                this,
-                false
-            )
+            // Sauvegarde de l'état du service (ici arrêté) dans les préférences
+            SharedPreferenceUtil.saveLocationTrackingPref(this, false)
             serviceRunning = false
+
         } catch (unlikely: SecurityException) {
             SharedPreferenceUtil.saveLocationTrackingPref(
                 this,
@@ -391,18 +419,42 @@ class JourneyLocationService : Service() {
         return serviceInformations.startTime
     }
 
+    fun getJourney(): Journey{
+        return journey!!
+    }
+
     fun setServiceInformationsStates(states: LocationSettingsStates){
         serviceInformations.locationSettingsStates = states
-        /*Log.d(TAG,"isLocationUsable : ${serviceInformations.locationSettingsStates?.isLocationUsable}")
+        Log.d(TAG,"isLocationUsable : ${serviceInformations.locationSettingsStates?.isLocationUsable}")
         Log.d(TAG,"isLocationPresent : ${serviceInformations.locationSettingsStates?.isLocationPresent}")
         Log.d(TAG,"isGpsPresent : ${serviceInformations.locationSettingsStates?.isGpsPresent}")
-        Log.d(TAG,"isGpsUsable : ${serviceInformations.locationSettingsStates?.isGpsUsable}")*/
+        Log.d(TAG,"isGpsUsable : ${serviceInformations.locationSettingsStates?.isGpsUsable}")
         broadCastServiceInformations()
+    }
+
+    private fun getBatteryPercentage(context: Context): Int{
+        val percentage: Int
+        if(Build.VERSION.SDK_INT >= 21){
+            val batteryManager = getSystemService(Context.BATTERY_SERVICE) as BatteryManager
+            percentage = batteryManager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
+        }
+        else{
+            val batteryStatus: Intent? = IntentFilter(Intent.ACTION_BATTERY_CHANGED).let { ifilter ->
+                context.registerReceiver(null, ifilter)
+            }
+            val batteryPct: Float? = batteryStatus?.let { intent ->
+                val level: Int = intent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
+                val scale: Int = intent.getIntExtra(BatteryManager.EXTRA_SCALE, -1)
+                level * 100 / scale.toFloat()
+            }
+            percentage = (batteryPct ?: -1) as Int
+        }
+        return percentage
     }
 
     private fun createFileToWrite(){
         // Création du fichier
-        val name = nameMAPMFiles()
+        val name = MyFileUtils.nameFiles(MyFileUtils.TYPE_MAPM,MyFileUtils.CSV_EXT)
         File(applicationContext.filesDir, name)
         // Sauvegarde du nom du fichier en cours d'écriture
         fileWriting = name
@@ -411,27 +463,6 @@ class JourneyLocationService : Service() {
         // Ouverture du fichier
         fileStream = applicationContext.openFileOutput(fileWriting, Context.MODE_PRIVATE)
         Log.d(TAG,"Fichier en cours d'écriture : $fileWriting")
-    }
-
-    private fun cleanUpFiles(){
-        val files = applicationContext.fileList()
-        Log.d(TAG,"Suppression de tous les fichiers\n")
-        for(f in files){
-            File(applicationContext.filesDir, f).delete()
-        }
-    }
-
-    private fun nameMAPMFiles(): String{
-        //Récupération de la date et du temps à l'appel de cette fonction
-        val date: LocalDateTime = LocalDateTime.now()
-        //Initialisation des formatters
-        val dateFormatter = DateTimeFormatter.ofPattern("yyyyMMdd")
-        val timeFormatter = DateTimeFormatter.ofPattern("HHmmss")
-        //Initialisation de la date et du temps sous le bon format à l'aide de leur formatter respectif
-        val parsedDate: String = date.format(dateFormatter)
-        val parsedTime: String = date.format(timeFormatter)
-        //Création du nom du fichier
-        return "${parsedDate}_${parsedTime}_${TYPE_FILE}_${CREATOR_ID}_$CHECK_SUM_ID.$EXTENSION"
     }
 
     private fun createNotificationUpload(): NotificationCompat.Builder{
@@ -590,6 +621,62 @@ class JourneyLocationService : Service() {
             get() = this@JourneyLocationService
     }
 
+    /**
+     * Class used for the client Binder.  Since this service runs in the same process as its
+     * clients, we don't need to deal with IPC.
+     */
+    inner class CountDownTimerNoFix(millisInFuture: Long, countDownInterval: Long) : CountDownTimer(millisInFuture, countDownInterval){
+        override fun onFinish() {
+            noFixHappened++
+            // TODO envoi event pas de fix
+            if(noFixHappened >= 5){
+                // TODO envoi event pas de fix persistant
+            }
+        }
+
+        override fun onTick(millisUntilFinished: Long) {
+            TODO("Not yet implemented")
+        }
+    }
+
+    /**
+     * Class used to receive some values about services's context (ex : Location service or Battery service).
+     */
+    inner class ContextServiceBroadcastReceiver : BroadcastReceiver() {
+
+        override fun onReceive(context: Context, intent: Intent) {
+            when(intent.action){
+                //Mode changed
+                LocationManager.MODE_CHANGED_ACTION -> {
+                    Log.d(TAG,"ACTION_SERVICE_LOCATION_BROADCAST_MODE_CHANGED")
+                    val lm = getSystemService(Context.LOCATION_SERVICE) as LocationManager
+                    val isGpsEnabled = lm.isProviderEnabled(LocationManager.GPS_PROVIDER)
+                    val isNetworkEnabled = lm.isProviderEnabled(LocationManager.NETWORK_PROVIDER)
+                    //Log.d(TAG,"Nombre de satellite : ${lm.isLocationEnabled}")
+                    if(isGpsEnabled || isNetworkEnabled){
+                        Log.d(TAG,"La localisation est activé !")
+                    }
+                    else{
+                        Log.d(TAG,"La localisation est désactivé !")
+                        fileStreamEvent?.write("11000 GPS no communication\n".toByteArray())
+                    }
+                }
+                Intent.ACTION_BATTERY_LOW -> {
+                    Log.d(TAG,"Le niveau de la batterie est faible : ${getBatteryPercentage(applicationContext)}")
+                }
+                Intent.ACTION_BATTERY_OKAY -> {
+                    Log.d(TAG,"Le niveau de la batterie est ok : ${getBatteryPercentage(applicationContext)}")
+                }
+                //Intent.ACTION_BATTERY_CHANGED -> {
+                //    Log.d(TAG,"Le niveau de batterie à changé : ${getBatteryPercentage(applicationContext)}")
+                //}
+                else -> {
+
+                }
+            }
+        }
+    }
+
     companion object {
         private const val TAG = "TruckTracker_JourneyService"
 
@@ -603,6 +690,9 @@ class JourneyLocationService : Service() {
 
         internal const val ACTION_SERVICE_LOCATION_BROADCAST_CHECK_REQUEST =
             "$PACKAGE_NAME.action.ACTION_FOREGROUND_ONLY_LOCATION_BROADCAST_CHECK_REQUEST"
+
+        internal const val ACTION_SERVICE_LOCATION_BROADCAST_MODE_CHANGED =
+            "android.location.MODE_CHANGED"
 
         internal const val EXTRA_INFORMATIONS = "$PACKAGE_NAME.extra.LOCATION"
 
@@ -618,14 +708,6 @@ class JourneyLocationService : Service() {
         private const val NOTIFICATION_CHANNEL_ID = "while_in_use_channel_01"
 
         private const val NOTIFICATION_CHANNEL_FILE_ID = "while_in_use_channel_02"
-
-        private const val EXTENSION = "csv"
-
-        private const val TYPE_FILE = "MAPM"
-
-        private const val CREATOR_ID = "ea0bb5a01de9"
-
-        private const val CHECK_SUM_ID = "4680ee8bd1607273607ae2de20fb2e10"
 
         private const val TIME_TO_WAIT_BEFORE_SEND_MAPM = 5
 

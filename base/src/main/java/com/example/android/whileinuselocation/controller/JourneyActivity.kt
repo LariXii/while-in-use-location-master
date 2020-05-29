@@ -22,7 +22,9 @@ import android.app.PendingIntent
 import android.content.*
 import android.content.IntentSender.SendIntentException
 import android.content.pm.PackageManager
+import android.location.LocationManager
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
 import android.os.SystemClock
@@ -30,13 +32,16 @@ import android.provider.Settings
 import android.util.Log
 import android.widget.Chronometer
 import android.widget.TextView
+import androidx.annotation.RequiresApi
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
+import androidx.core.content.getSystemService
 import androidx.core.view.isVisible
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import com.example.android.whileinuselocation.BuildConfig
 import com.example.android.whileinuselocation.R
 import com.example.android.whileinuselocation.SharedPreferenceUtil
+import com.example.android.whileinuselocation.model.MyFileUtils
 import com.example.android.whileinuselocation.model.ServiceInformations
 import com.google.android.gms.common.api.ResolvableApiException
 import com.google.android.gms.location.*
@@ -153,6 +158,12 @@ class JourneyActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenc
             if (enabled) {
                 //Lors d'un prochain clic on stop l'update de la localisation
                 journeyLocationService?.unsubscribeToLocationUpdates()
+
+                val intentEnd = Intent(this,EndActivity::class.java)
+                intentEnd.putExtra("journey", journeyLocationService?.getJourney())
+                intentEnd.flags = Intent.FLAG_ACTIVITY_CLEAR_TASK
+                startActivity(intentEnd)
+                finish()
             } else {
                 // TODO: Step 1.0, Review Permissions: Checks and requests if needed.
                 // Si la permission de localisation est approuvé, on lance la récupération des localisations
@@ -166,6 +177,8 @@ class JourneyActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenc
                 }
             }
         }
+
+        MyFileUtils.cleanUpFiles(applicationContext)
 
         //Perform a locationSettingsRequest to get the locationSettingsStates
         requestLocationSettingsEnable()
@@ -194,6 +207,7 @@ class JourneyActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenc
         LocalBroadcastManager.getInstance(this).registerReceiver(
             journeyLocationServiceBroadcastReceiver,intentFilterCheckRequest
         )
+
 
     }
 
@@ -430,7 +444,6 @@ class JourneyActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenc
                     val pendingIntent = intent.getParcelableExtra<PendingIntent>(
                         JourneyLocationService.EXTRA_CHECK_REQUEST
                     )
-                    Log.d(TAG,"Intent : $pendingIntent")
 
                     if(pendingIntent != null) {
                         try {

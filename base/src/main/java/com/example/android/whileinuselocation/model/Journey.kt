@@ -3,6 +3,7 @@ package com.example.android.whileinuselocation.model
 import android.os.Parcel
 import android.os.Parcelable
 import android.os.SystemClock
+import android.text.Editable
 import java.text.SimpleDateFormat
 import java.time.LocalDate
 import java.time.LocalTime
@@ -20,10 +21,16 @@ class Journey() : Parcelable {
 
     private var isPending = false
 
-    private val listLocalisation: MutableList<Localisation> = mutableListOf()
+    private var listLocalisation: MutableList<Localisation> = mutableListOf()
 
     constructor(parcel: Parcel) : this() {
+        startDate = parcel.readSerializable() as LocalDate?
+        endDate = parcel.readSerializable() as LocalDate?
+        startTime = parcel.readLong()
+        endTime = parcel.readLong()
+        duration = parcel.readValue(Long::class.java.classLoader) as? Long
         isPending = parcel.readByte() != 0.toByte()
+        listLocalisation = parcel.readParcelableList(listLocalisation, Localisation::class.java.classLoader)
     }
 
     fun startJourney(){
@@ -50,8 +57,11 @@ class Journey() : Parcelable {
     override fun toString(): String {
         val dateFormatter = DateTimeFormatter.ofPattern("dd/MM/yyyy")
 
-        val formatter = SimpleDateFormat("HH'h'mm'm'ss's'")
-        val durationParsed = formatter.format(Date(duration!!))
+        var durationParsed = "Pas encore calculé !"
+        if(duration != null){
+            val formatter = SimpleDateFormat("HH'h'mm'm'ss's'")
+            durationParsed = formatter.format(Date(duration!!))
+        }
 
         return "Trajet commencé le : ${startDate?.format(dateFormatter)}\n" +
                 "Fini le : ${endDate?.format(dateFormatter)}\n" +
@@ -60,7 +70,13 @@ class Journey() : Parcelable {
     }
 
     override fun writeToParcel(parcel: Parcel, flags: Int) {
+        parcel.writeSerializable(startDate)
+        parcel.writeSerializable(endDate)
+        parcel.writeLong(startTime)
+        parcel.writeLong(endTime)
+        parcel.writeValue(duration)
         parcel.writeByte(if (isPending) 1 else 0)
+        parcel.writeParcelableList(listLocalisation,flags)
     }
 
     override fun describeContents(): Int {

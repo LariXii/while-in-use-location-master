@@ -9,8 +9,10 @@ class ServiceInformations() : Parcelable {
     private val listLocalisation: MutableList<Localisation> = mutableListOf()
     var startTime: Long = SystemClock.elapsedRealtime()
     var locationSettingsStates: LocationSettingsStates? = null
+
     var isSending = false
     var isFromMockProvider = false
+    var isJourneyRunning = false
 
     constructor(parcel: Parcel) : this() {
     }
