@@ -25,10 +25,8 @@ import androidx.core.app.NotificationCompat
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import com.example.android.whileinuselocation.R
 import com.example.android.whileinuselocation.SharedPreferenceUtil
-import com.example.android.whileinuselocation.model.MyFileUtils
-import com.example.android.whileinuselocation.model.Journey
-import com.example.android.whileinuselocation.model.ServiceInformations
-import com.example.android.whileinuselocation.model.Localisation
+import com.example.android.whileinuselocation.manager.EventManager
+import com.example.android.whileinuselocation.model.*
 import com.google.android.gms.common.api.ResolvableApiException
 import com.google.android.gms.location.*
 import java.io.File
@@ -60,8 +58,6 @@ class JourneyLocationService : Service() {
     // ########################### FILES ########################### //
     private var fileStream: FileOutputStream? = null
 
-    private var fileStreamEvent: FileOutputStream? = null
-
     private lateinit var fileWriting: String
 
     private val filesUploading: MutableList<String> = mutableListOf()
@@ -74,6 +70,8 @@ class JourneyLocationService : Service() {
     private lateinit var notificationManager: NotificationManager
 
     private lateinit var locationManager: LocationManager
+
+    private lateinit var eventManager: EventManager
 
     private val contextServiceBroadcastReceiver = ContextServiceBroadcastReceiver()
 
@@ -95,6 +93,7 @@ class JourneyLocationService : Service() {
 
     private var journey: Journey? = null
 
+    val countDownTimerNoFix = CountDownTimerNoFix(TIME_TO_WAIT_FOR_NO_FIX * 1000, 1 * 1000)
     var timerHandler: Handler = Handler()
     private var timerRunnable: Runnable = object : Runnable {
         override fun run() {
@@ -121,6 +120,7 @@ class JourneyLocationService : Service() {
 
         notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
+        eventManager = EventManager(applicationContext,399367311, 3, 10747906)
 
         registerReceiver(contextServiceBroadcastReceiver, IntentFilter(LocationManager.MODE_CHANGED_ACTION))
         registerReceiver(contextServiceBroadcastReceiver, IntentFilter(Intent.ACTION_BATTERY_LOW))
@@ -167,6 +167,10 @@ class JourneyLocationService : Service() {
 
                 if (locationResult?.locations != null) {
 
+                    countDownTimerNoFix.cancel()
+                    countDownTimerNoFix.start()
+                    noFixHappened = 0
+
                     for(loc in locationResult.locations){
                         currentLocation =
                             Localisation(
@@ -181,8 +185,7 @@ class JourneyLocationService : Service() {
                         serviceInformations.addLocation(currentLocation!!)
 
                         if(loc.isFromMockProvider){
-                            serviceInformations.isFromMockProvider = loc.isFromMockProvider
-                            fileStreamEvent?.write("10999 GPS From mock provider\n".toByteArray())
+                            eventManager.writeEvent(Event(Event.EVNT_GPS_FROM_MOCK_PROVIDER),SystemClock.elapsedRealtimeNanos())
                         }
 
                         Log.d(TAG,"FromMockprovider : ${serviceInformations.isFromMockProvider}")
@@ -354,22 +357,23 @@ class JourneyLocationService : Service() {
             // TODO: Step 1.5, Subscribe to location changes.
             fusedLocationProviderClient.requestLocationUpdates(locationRequest, locationCallback, Looper.myLooper())
 
-            //Start the timer for send all 5 min a MAPM file
-            timerHandler.postDelayed(timerRunnable, (TIME_TO_WAIT_BEFORE_SEND_MAPM * 1000 * 60).toLong());
+            //Start the timer to send all 5 min a MAPM file
+            timerHandler.postDelayed(timerRunnable, (TIME_TO_WAIT_BEFORE_SEND_MAPM * 1000 * 60).toLong())
+            //Start the timer for evnt no fix and no fix persistent
+            countDownTimerNoFix.start()
 
             //Création du fichier MAPM
             createFileToWrite()
+            //Création du fichier de log EVNT
+            eventManager.openFile()
 
-            // Création du fichier d'événements
-            val name = MyFileUtils.nameFiles(MyFileUtils.TYPE_EVNT, MyFileUtils.CSV_EXT)
-            File(applicationContext.filesDir, name)
-            fileStreamEvent = applicationContext.openFileOutput(name, Context.MODE_PRIVATE)
 
         } catch (unlikely: SecurityException) {
             SharedPreferenceUtil.saveLocationTrackingPref(
                 this,
                 false
             )
+            countDownTimerNoFix.cancel()
             Log.e(TAG, "Lost location permissions. Couldn't remove updates. $unlikely")
         }
     }
@@ -383,6 +387,7 @@ class JourneyLocationService : Service() {
             removeTask.addOnCompleteListener { task ->
                 if (task.isSuccessful) {
                     Log.d(TAG, "Location Callback removed.")
+                    countDownTimerNoFix.cancel()
                     //stopSelf()
                 } else {
                     Log.d(TAG, "Failed to remove Location Callback.")
@@ -394,7 +399,9 @@ class JourneyLocationService : Service() {
 
             // Fermeture des streams des fichiers MAPM et EVNT
             fileStream?.close()
-            fileStreamEvent?.close()
+
+            val nameFileEvnt = eventManager.closeFile()
+            //TODO upload nameFileEvnt uploadFile(nameFileEvnt)
 
             // Envoi du fichier en cours d'écriture à la fin du service
             uploadFile()
@@ -627,16 +634,22 @@ class JourneyLocationService : Service() {
      */
     inner class CountDownTimerNoFix(millisInFuture: Long, countDownInterval: Long) : CountDownTimer(millisInFuture, countDownInterval){
         override fun onFinish() {
-            noFixHappened++
-            // TODO envoi event pas de fix
             if(noFixHappened >= 5){
-                // TODO envoi event pas de fix persistant
+                Log.d(TAG,"onFinish CountDownTimerNoFix > 5")
+                eventManager.writeEvent(Event(Event.EVNT_GPS_NO_FIX_PERSISTENT), SystemClock.elapsedRealtimeNanos())
             }
+            else{
+                Log.d(TAG,"onFinish CountDownTimerNoFix")
+                eventManager.writeEvent(Event(Event.EVNT_GPS_NO_FIX), SystemClock.elapsedRealtimeNanos())
+            }
+            noFixHappened++
+            countDownTimerNoFix.start()
         }
 
         override fun onTick(millisUntilFinished: Long) {
-            TODO("Not yet implemented")
+
         }
+
     }
 
     /**
@@ -652,13 +665,13 @@ class JourneyLocationService : Service() {
                     val lm = getSystemService(Context.LOCATION_SERVICE) as LocationManager
                     val isGpsEnabled = lm.isProviderEnabled(LocationManager.GPS_PROVIDER)
                     val isNetworkEnabled = lm.isProviderEnabled(LocationManager.NETWORK_PROVIDER)
-                    //Log.d(TAG,"Nombre de satellite : ${lm.isLocationEnabled}")
+
                     if(isGpsEnabled || isNetworkEnabled){
                         Log.d(TAG,"La localisation est activé !")
                     }
                     else{
                         Log.d(TAG,"La localisation est désactivé !")
-                        fileStreamEvent?.write("11000 GPS no communication\n".toByteArray())
+                        eventManager.writeEvent(Event(Event.EVNT_GPS_NO_COMMUNICATION), SystemClock.elapsedRealtimeNanos())
                     }
                 }
                 Intent.ACTION_BATTERY_LOW -> {
@@ -678,28 +691,10 @@ class JourneyLocationService : Service() {
     }
 
     companion object {
+        // #################### VARIABLES #################### //
         private const val TAG = "TruckTracker_JourneyService"
 
         private const val PACKAGE_NAME = "com.example.android.whileinuselocation"
-
-        internal const val ACTION_SERVICE_LOCATION_BROADCAST =
-            "$PACKAGE_NAME.action.FOREGROUND_ONLY_LOCATION_BROADCAST"
-
-        internal const val ACTION_SERVICE_LOCATION_BROADCAST_INFORMATIONS =
-            "$PACKAGE_NAME.action.FOREGROUND_ONLY_LOCATION_BROADCAST_LOCATION"
-
-        internal const val ACTION_SERVICE_LOCATION_BROADCAST_CHECK_REQUEST =
-            "$PACKAGE_NAME.action.ACTION_FOREGROUND_ONLY_LOCATION_BROADCAST_CHECK_REQUEST"
-
-        internal const val ACTION_SERVICE_LOCATION_BROADCAST_MODE_CHANGED =
-            "android.location.MODE_CHANGED"
-
-        internal const val EXTRA_INFORMATIONS = "$PACKAGE_NAME.extra.LOCATION"
-
-        private const val EXTRA_CANCEL_LOCATION_TRACKING_FROM_NOTIFICATION =
-            "$PACKAGE_NAME.extra.CANCEL_LOCATION_TRACKING_FROM_NOTIFICATION"
-
-        internal const val EXTRA_CHECK_REQUEST = "$PACKAGE_NAME.extra.CHECK_REQUEST"
 
         private const val NOTIFICATION_ID = 12345678
 
@@ -711,7 +706,30 @@ class JourneyLocationService : Service() {
 
         private const val TIME_TO_WAIT_BEFORE_SEND_MAPM = 5
 
+        private const val TIME_TO_WAIT_FOR_NO_FIX: Long = 5
+
         private const val REQUEST_CHECK_SETTINGS = 1
+        // ################################################ //
+
+        // #################### ACTIONS #################### //
+        internal const val ACTION_SERVICE_LOCATION_BROADCAST =
+            "$PACKAGE_NAME.action.FOREGROUND_ONLY_LOCATION_BROADCAST"
+
+        internal const val ACTION_SERVICE_LOCATION_BROADCAST_INFORMATIONS =
+            "$PACKAGE_NAME.action.FOREGROUND_ONLY_LOCATION_BROADCAST_LOCATION"
+
+        internal const val ACTION_SERVICE_LOCATION_BROADCAST_CHECK_REQUEST =
+            "$PACKAGE_NAME.action.ACTION_FOREGROUND_ONLY_LOCATION_BROADCAST_CHECK_REQUEST"
+        // ################################################ //
+
+        // #################### EXTRAS #################### //
+        internal const val EXTRA_INFORMATIONS = "$PACKAGE_NAME.extra.LOCATION"
+
+        private const val EXTRA_CANCEL_LOCATION_TRACKING_FROM_NOTIFICATION =
+            "$PACKAGE_NAME.extra.CANCEL_LOCATION_TRACKING_FROM_NOTIFICATION"
+
+        internal const val EXTRA_CHECK_REQUEST = "$PACKAGE_NAME.extra.CHECK_REQUEST"
+        // ################################################ //
     }
 }
 

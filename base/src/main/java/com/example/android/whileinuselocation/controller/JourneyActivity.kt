@@ -178,8 +178,6 @@ class JourneyActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenc
             }
         }
 
-        MyFileUtils.cleanUpFiles(applicationContext)
-
         //Perform a locationSettingsRequest to get the locationSettingsStates
         requestLocationSettingsEnable()
     }
