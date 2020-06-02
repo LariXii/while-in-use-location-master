@@ -16,15 +16,13 @@
 package com.example.android.whileinuselocation.controller
 
 import android.Manifest
-import android.annotation.SuppressLint
 import android.app.Activity
 import android.app.PendingIntent
 import android.content.*
 import android.content.IntentSender.SendIntentException
 import android.content.pm.PackageManager
-import android.location.LocationManager
+import android.graphics.Color
 import android.net.Uri
-import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
 import android.os.SystemClock
@@ -32,21 +30,22 @@ import android.provider.Settings
 import android.util.Log
 import android.widget.Chronometer
 import android.widget.TextView
-import androidx.annotation.RequiresApi
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
-import androidx.core.content.getSystemService
 import androidx.core.view.isVisible
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import com.example.android.whileinuselocation.BuildConfig
 import com.example.android.whileinuselocation.R
 import com.example.android.whileinuselocation.SharedPreferenceUtil
-import com.example.android.whileinuselocation.model.MyFileUtils
+import com.example.android.whileinuselocation.model.Journey
 import com.example.android.whileinuselocation.model.ServiceInformations
 import com.google.android.gms.common.api.ResolvableApiException
 import com.google.android.gms.location.*
 import com.google.android.material.snackbar.Snackbar
 import kotlinx.android.synthetic.main.activity_journey.*
+import java.security.Permission
+import java.time.format.DateTimeFormatter
+import java.util.*
 
 
 private const val TAG = "TruckTracker_Journey"
@@ -107,13 +106,8 @@ class JourneyActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenc
     // Listens for location broadcasts from JourneyLocationService.
     private lateinit var journeyLocationServiceBroadcastReceiver: ForegroundOnlyBroadcastReceiver
 
-    private lateinit var intentFilterCheckRequest: IntentFilter
-    private lateinit var intentFilterLocation: IntentFilter
-
     //Objet permettant de sauvegarder des informations sur l'application une fois quittée
     private lateinit var sharedPreferences:SharedPreferences
-
-    private lateinit var outputTextView: TextView
 
     // Monitors connection to the while-in-use service.
     private val journeyLocationServiceConnection = object : ServiceConnection {
@@ -122,13 +116,15 @@ class JourneyActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenc
             val binder = service as JourneyLocationService.LocalBinder
             journeyLocationService = binder.service
             journeyLocationServiceBound = true
-            Log.d(TAG, "Le service tourne : ${journeyLocationService!!.serviceRunning}")
+            //Log.d(TAG, "Le service tourne : ${journeyLocationService!!.serviceRunning}")
             //Lors du bind au service change les préférences si celui-ci n'est pas en train de tourner (arrive lors de la relance de l'application via Android Studio)
             SharedPreferenceUtil.saveLocationTrackingPref(applicationContext,journeyLocationService!!.serviceRunning)
 
             updateButtonState(
                 sharedPreferences.getBoolean(SharedPreferenceUtil.KEY_FOREGROUND_ENABLED, false)
             )
+            //Perform a locationSettingsRequest to get the locationSettingsStates
+            requestLocationSettingsEnable()
         }
 
         override fun onServiceDisconnected(name: ComponentName) {
@@ -167,7 +163,7 @@ class JourneyActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenc
             } else {
                 // TODO: Step 1.0, Review Permissions: Checks and requests if needed.
                 // Si la permission de localisation est approuvé, on lance la récupération des localisations
-                if (foregroundPermissionApproved()) {
+                if (locationPermissionApproved()) {
                     journeyLocationService?.subscribeToLocationUpdates()
                         ?: Log.d(TAG, "Service Not Bound")
                 }
@@ -178,8 +174,6 @@ class JourneyActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenc
             }
         }
 
-        //Perform a locationSettingsRequest to get the locationSettingsStates
-        requestLocationSettingsEnable()
     }
 
     override fun onStart() {
@@ -189,6 +183,16 @@ class JourneyActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenc
         //Lors d'un changement d'une préférence appelle un listener qui est this
         sharedPreferences.registerOnSharedPreferenceChangeListener(this)
 
+        LocalBroadcastManager.getInstance(this).registerReceiver(
+            journeyLocationServiceBroadcastReceiver,IntentFilter(JourneyLocationService.ACTION_SERVICE_LOCATION_BROADCAST_INFORMATIONS)
+        )
+        LocalBroadcastManager.getInstance(this).registerReceiver(
+            journeyLocationServiceBroadcastReceiver,IntentFilter(JourneyLocationService.ACTION_SERVICE_LOCATION_BROADCAST_CHECK_REQUEST)
+        )
+        LocalBroadcastManager.getInstance(this).registerReceiver(
+            journeyLocationServiceBroadcastReceiver,IntentFilter(JourneyLocationService.ACTION_SERVICE_LOCATION_BROADCAST_JOURNEY)
+        )
+
         //Liaison du service de localisation avec l'activité principale
         val serviceIntent = Intent(this, JourneyLocationService::class.java)
         bindService(serviceIntent, journeyLocationServiceConnection, Context.BIND_AUTO_CREATE)
@@ -196,17 +200,7 @@ class JourneyActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenc
 
     override fun onResume() {
         super.onResume()
-        //Log.d(TAG,"onResume Activity")
-        intentFilterLocation = IntentFilter(JourneyLocationService.ACTION_SERVICE_LOCATION_BROADCAST_INFORMATIONS)
-        intentFilterCheckRequest = IntentFilter(JourneyLocationService.ACTION_SERVICE_LOCATION_BROADCAST_CHECK_REQUEST)
-        LocalBroadcastManager.getInstance(this).registerReceiver(
-            journeyLocationServiceBroadcastReceiver,intentFilterLocation
-        )
-        LocalBroadcastManager.getInstance(this).registerReceiver(
-            journeyLocationServiceBroadcastReceiver,intentFilterCheckRequest
-        )
-
-
+        Log.d(TAG,"onResume Activity")
     }
 
     override fun onPause() {
@@ -225,6 +219,7 @@ class JourneyActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenc
         }
         //Enlève le listener associé aux changements de préférences
         sharedPreferences.unregisterOnSharedPreferenceChangeListener(this)
+        //Enlève le listener sur le LocalBroadCast
         LocalBroadcastManager.getInstance(this).unregisterReceiver(
             journeyLocationServiceBroadcastReceiver
         )
@@ -232,7 +227,7 @@ class JourneyActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenc
     }
 
     override fun onDestroy() {
-        //Log.d(TAG,"Activité principale est détruite")
+        Log.d(TAG,"onDestroy Activity")
         super.onDestroy()
     }
 
@@ -247,7 +242,7 @@ class JourneyActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenc
     }
 
     // TODO: Step 1.0, Review Permissions: Method checks if permissions approved.
-    private fun foregroundPermissionApproved(): Boolean {
+    private fun locationPermissionApproved(): Boolean {
         return PackageManager.PERMISSION_GRANTED == ActivityCompat.checkSelfPermission(
             this,
             Manifest.permission.ACCESS_FINE_LOCATION
@@ -256,7 +251,7 @@ class JourneyActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenc
 
     // TODO: Step 1.0, Review Permissions: Method requests permissions.
     private fun requestForegroundPermissions() {
-        val provideRationale = foregroundPermissionApproved()
+        val provideRationale = locationPermissionApproved()
 
         // If the user denied a previous request, but didn't check "Don't ask again", provide
         // additional rationale.
@@ -307,7 +302,7 @@ class JourneyActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenc
                 else -> {
                     // Permission denied.
                     updateButtonState(false)
-
+                    ActivityCompat.shouldShowRequestPermissionRationale(this, Manifest.permission.ACCESS_FINE_LOCATION)
                     Snackbar.make(
                         findViewById(R.id.activity_main),
                         R.string.permission_denied_explanation,
@@ -335,7 +330,7 @@ class JourneyActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenc
     private fun requestLocationSettingsEnable(){
         val locationRequest = LocationRequest.create()
         locationRequest.priority = LocationRequest.PRIORITY_HIGH_ACCURACY
-
+        Log.d(TAG,"onRequestLocationSettings()")
         val builderSettingsLocation: LocationSettingsRequest.Builder  = LocationSettingsRequest.Builder()
             .addLocationRequest(locationRequest)
 
@@ -343,7 +338,7 @@ class JourneyActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenc
 
         task.addOnSuccessListener { response ->
             val states = response.locationSettingsStates
-            journeyLocationService?.setServiceInformationsStates(states)
+            journeyLocationService?.setServiceInformationsStates(states.isGpsPresent,states.isGpsUsable)
         }
         task.addOnFailureListener { e ->
             if (e is ResolvableApiException) {
@@ -365,11 +360,13 @@ class JourneyActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenc
             when (resultCode) {
                 Activity.RESULT_OK -> {
                     // All required changes were successfully made
-                    journeyLocationService?.setServiceInformationsStates(states)
+                    Log.d(TAG,"Service bound : ${journeyLocationService?: "null"}")
+                    journeyLocationService?.setServiceInformationsStates(states.isGpsPresent,states.isGpsUsable)
+                    Log.d(TAG,"GPS Present : ${states.isGpsPresent}\nGPS Usable : ${states.isGpsUsable}")
                 }
                 Activity.RESULT_CANCELED -> {
-                    updateButtonState(false)
-                    journeyLocationService?.setServiceInformationsStates(states)
+                    journeyLocationService?.setServiceInformationsStates(states.isGpsPresent,states.isGpsUsable)
+                    Log.d(TAG,"GPS Present : ${states.isGpsPresent}\nGPS Usable : ${states.isGpsUsable}")
                     Snackbar.make(
                         findViewById(R.id.activity_main),
                         R.string.permission_denied_explanation,
@@ -396,8 +393,9 @@ class JourneyActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenc
     private fun updateButtonState(trackingLocation: Boolean) {
         foreground_only_location_button.isChecked = trackingLocation
         if(trackingLocation){
-            (chronometer_text as Chronometer).base = journeyLocationService!!.getTimeStart()
+            (chronometer_text as Chronometer).base = journeyLocationService!!.getJourney().startTime
             (chronometer_text as Chronometer).start()
+            journeyInformationsToScreen(journeyLocationService!!.getJourney())
         }
         else{
             (chronometer_text as Chronometer).base = SystemClock.elapsedRealtime()
@@ -410,12 +408,26 @@ class JourneyActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenc
      * Récupère le texte déjà présent dans la zone de texte et rajoute le nouveau texte
      */
     private fun serviceInformationsToScreen(serviceInfos: ServiceInformations) {
-        if(serviceInfos.locationSettingsStates != null){
-            gps_state_text.text = if(serviceInfos.locationSettingsStates!!.isGpsPresent) "Activé" else "Désactivé"
-            gps_unable_text.text = if(serviceInfos.locationSettingsStates!!.isGpsUsable) "Activé" else "Désactivé"
+        textView_error_msg.isVisible = !serviceInfos.isGpsUsable
+
+        if(serviceInfos.isGpsUsable){
+            gps_unable.text = "Activé"
+            gps_unable.setTextColor(Color.GREEN)
         }
-        number_loc_text.text = serviceInfos.numberOfLocalisation().toString()
+        else{
+            gps_unable.text = "Désactivé"
+            gps_unable.setTextColor(Color.RED )
+        }
+
         send_file_text.isVisible = serviceInfos.isSending
+        Log.d(TAG,"Envoi du fichier il doit etre visible ? : ${serviceInfos.isSending}")
+    }
+
+    private fun journeyInformationsToScreen(journey: Journey) {
+        container_journey_infos.isVisible = journey.isPending()
+        number_loc_text.text = journey.numberOfLocalisation().toString()
+        val dateFormatter = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm:ss")
+        textView_date_start_journey.text = journey.getStartDateTime().format(dateFormatter)
     }
 
     /**
@@ -434,6 +446,18 @@ class JourneyActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenc
 
                     if (serviceInfos != null) {
                         serviceInformationsToScreen(serviceInfos)
+                    }
+                }
+                // JOURNEY
+                JourneyLocationService.ACTION_SERVICE_LOCATION_BROADCAST_JOURNEY -> {
+                    //Log.d(TAG,"ACTION_SERVICE_LOCATION_BROADCAST_INFORMATIONS")
+                    val journeyInfo = intent.getParcelableExtra<Journey>(
+                        JourneyLocationService.EXTRA_JOURNEY
+                    )
+
+                    if (journeyInfo != null) {
+                        // TODO Display journey informations
+                        journeyInformationsToScreen(journeyInfo)
                     }
                 }
                 // CHECK_REQUEST

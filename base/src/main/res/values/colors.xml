@@ -16,6 +16,9 @@
   -->
 <resources>
     <color name="colorBorder">#61C1B2B2</color>
-    <color name="colorPrimaryDark">#303F9F</color>
-    <color name="colorAccent">#FF4081</color>
+    <color name="colorDesactivated">#C33C3C</color>
+    <color name="colorActivated">#54A138</color>
+    <color name="colorUnabled">#474747</color>
+    <color name="colorActivatedStart">#155613</color>
+    <color name="colorActivatedCenter">#46803E</color>
 </resources>

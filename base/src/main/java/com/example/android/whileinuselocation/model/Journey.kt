@@ -5,16 +5,14 @@ import android.os.Parcelable
 import android.os.SystemClock
 import android.text.Editable
 import java.text.SimpleDateFormat
-import java.time.LocalDate
-import java.time.LocalTime
+import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.util.*
 
 class Journey() : Parcelable {
-    private var startDate: LocalDate? = null
-    private var startTime: Long = 0
-
-    private var endDate: LocalDate? = null
+    private lateinit var startDate: LocalDateTime
+    var startTime: Long = 0
+    private var endDate: LocalDateTime? = null
     private var endTime: Long = 0
 
     private var duration: Long? = null
@@ -24,8 +22,8 @@ class Journey() : Parcelable {
     private var listLocalisation: MutableList<Localisation> = mutableListOf()
 
     constructor(parcel: Parcel) : this() {
-        startDate = parcel.readSerializable() as LocalDate?
-        endDate = parcel.readSerializable() as LocalDate?
+        startDate = parcel.readSerializable() as LocalDateTime
+        endDate = parcel.readSerializable() as LocalDateTime?
         startTime = parcel.readLong()
         endTime = parcel.readLong()
         duration = parcel.readValue(Long::class.java.classLoader) as? Long
@@ -34,17 +32,21 @@ class Journey() : Parcelable {
     }
 
     fun startJourney(){
-        startDate = LocalDate.now()
+        startDate = LocalDateTime.now()
         startTime = SystemClock.elapsedRealtime()
         isPending = true
     }
 
     fun stopJourney(){
-        endDate = LocalDate.now()
+        endDate = LocalDateTime.now()
         endTime = SystemClock.elapsedRealtime()
         isPending = false
         duration = endTime - startTime
     }
+
+    fun isPending() = isPending
+
+    fun getStartDateTime() = startDate
 
     fun addLocation(location: Localisation){
         listLocalisation.add(location)

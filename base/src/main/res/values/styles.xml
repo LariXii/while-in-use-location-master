@@ -19,8 +19,5 @@
     <style name="AppTheme" parent="Theme.AppCompat">
 
     </style>
-    <style name="AppThemeLight" parent="Theme.AppCompat.Light">
-
-    </style>
 
 </resources>

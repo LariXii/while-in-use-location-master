@@ -49,7 +49,6 @@ class EventManager(_context: Context, _obuId: Int, _manufacturerId: Int, _contra
         //Calcul de la date précise à laquelle est arrivé l'event
         val etCurrent = SystemClock.elapsedRealtimeNanos()
         val diff = (etCurrent - et) / toSecond
-        Log.d("TruckTracker_EVENTMANAGER","Différence de temps de l'événement : $diff s")
         //Création de l'objet date
         val date = LocalDateTime.now().minusSeconds(diff)
         val c10 = date.format(formatter)

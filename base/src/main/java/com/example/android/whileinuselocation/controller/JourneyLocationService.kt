@@ -93,7 +93,7 @@ class JourneyLocationService : Service() {
 
     private var journey: Journey? = null
 
-    val countDownTimerNoFix = CountDownTimerNoFix(TIME_TO_WAIT_FOR_NO_FIX * 1000, 1 * 1000)
+    val countDownTimerNoFix = CountDownTimerNoFix(TIME_TO_WAIT_FOR_NO_FIX,1000)
     var timerHandler: Handler = Handler()
     private var timerRunnable: Runnable = object : Runnable {
         override fun run() {
@@ -111,7 +111,7 @@ class JourneyLocationService : Service() {
             //Envoi du fichier au serveur
             uploadFile()
 
-            timerHandler.postDelayed(this, (TIME_TO_WAIT_BEFORE_SEND_MAPM * 1000 * 60).toLong())
+            timerHandler.postDelayed(this, (TIME_TO_WAIT_BEFORE_SEND_MAPM).toLong())
         }
     }
 
@@ -120,9 +120,14 @@ class JourneyLocationService : Service() {
 
         notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
+
+        Log.d(TAG,"La permission d'utiliser le WIFI pour la localisation est activé : ${locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)}")
+        Log.d(TAG,"La permission d'utiliser le GPS est activé : ${locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)}")
+
         eventManager = EventManager(applicationContext,399367311, 3, 10747906)
 
         registerReceiver(contextServiceBroadcastReceiver, IntentFilter(LocationManager.MODE_CHANGED_ACTION))
+        registerReceiver(contextServiceBroadcastReceiver, IntentFilter(LocationManager.PROVIDERS_CHANGED_ACTION))
         registerReceiver(contextServiceBroadcastReceiver, IntentFilter(Intent.ACTION_BATTERY_LOW))
         registerReceiver(contextServiceBroadcastReceiver, IntentFilter(Intent.ACTION_BATTERY_OKAY))
         //registerReceiver(contextServiceBroadcastReceiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
@@ -163,7 +168,8 @@ class JourneyLocationService : Service() {
             override fun onLocationResult(locationResult: LocationResult?) {
                 super.onLocationResult(locationResult)
 
-                Log.d(TAG,"Nombre de localisations disponible : ${locationResult?.locations}")
+                Log.d(TAG,"Localisations disponible : ${locationResult?.locations}")
+                Log.d(TAG,"Nombre : ${locationResult?.locations?.size}")
 
                 if (locationResult?.locations != null) {
 
@@ -182,34 +188,16 @@ class JourneyLocationService : Service() {
                             )
 
                         journey!!.addLocation(currentLocation!!)
-                        serviceInformations.addLocation(currentLocation!!)
 
                         if(loc.isFromMockProvider){
                             eventManager.writeEvent(Event(Event.EVNT_GPS_FROM_MOCK_PROVIDER),SystemClock.elapsedRealtimeNanos())
                         }
-
-                        Log.d(TAG,"FromMockprovider : ${serviceInformations.isFromMockProvider}")
                         broadCastServiceInformations()
+                        broadCastJourneyInformations()
 
                         // Ecriture des localisations dans le fichier interne ouvert
                         fileStream?.write(currentLocation!!.toMAPM().toByteArray())
                     }
-                    // Normally, you want to save a new location to a database. We are simplifying
-                    // things a bit and just saving it as a local variable, as we only need it again
-                    // if a Notification is created (when user navigates away from app).
-
-                    //currentLocation = Localisation(idLocation++, locationResult.lastLocation)
-                    //user.addLocation(currentLocation!!)
-
-                    Log.d(TAG, "Nombre de localisation récupérés : ${serviceInformations.numberOfLocalisation()}")
-                    // Notify our Activity that a new location was added. Again, if this was a
-                    // production app, the Activity would be listening for changes to a database
-                    // with new locations, but we are simplifying things a bit to focus on just
-                    // learning the location side of things.
-
-                    //val intent = Intent(ACTION_FOREGROUND_ONLY_LOCATION_BROADCAST)
-                    //intent.putExtra(EXTRA_LOCATION, currentLocation)
-                    //LocalBroadcastManager.getInstance(applicationContext).sendBroadcast(intent)
 
                 } else {
                     Log.d(TAG, "Location information isn't available.")
@@ -221,7 +209,7 @@ class JourneyLocationService : Service() {
                 if (availability != null) {
                     //Log.d(TAG,"availability != null")
                     if(!availability.isLocationAvailable) {
-                        //Log.d(TAG,"!availability.isLocationAvailable")
+                        Log.d(TAG,"Location Availability changed ! ")
                         val builderSettingsLocation: LocationSettingsRequest.Builder  = LocationSettingsRequest.Builder()
                             .addLocationRequest(locationRequest)
 
@@ -230,7 +218,7 @@ class JourneyLocationService : Service() {
                         task.addOnSuccessListener { response ->
                             //Log.d(TAG,"task.onSuccess")
                             val states = response.locationSettingsStates
-                            serviceInformations.locationSettingsStates = states
+                            // TODO STATES
                             broadCastServiceInformations()
                         }
                         task.addOnFailureListener { e ->
@@ -268,17 +256,6 @@ class JourneyLocationService : Service() {
 
     override fun onStartCommand(intent: Intent, flags: Int, startId: Int): Int {
         Log.d(TAG, "onStartCommand()")
-        //Valeur de la clé extra CANCEL_LOCATION_TRACKING_FROM_NOTIFICATION
-        // TODO DEPRECATED
-        val cancelLocationTrackingFromNotification =
-            intent.getBooleanExtra(EXTRA_CANCEL_LOCATION_TRACKING_FROM_NOTIFICATION, false)
-
-        //Si cette valeur est égal à true
-        if (cancelLocationTrackingFromNotification) {
-            //Arrêt des requêtes de localisation
-            unsubscribeToLocationUpdates()
-        }
-        // Tells the system not to recreate the service after it's been killed.
         return START_NOT_STICKY
     }
 
@@ -341,7 +318,6 @@ class JourneyLocationService : Service() {
         journey = Journey()
         journey!!.startJourney()
 
-        serviceInformations.startTime = SystemClock.elapsedRealtime()
         SharedPreferenceUtil.saveLocationTrackingPref(
             this,
             true
@@ -358,7 +334,7 @@ class JourneyLocationService : Service() {
             fusedLocationProviderClient.requestLocationUpdates(locationRequest, locationCallback, Looper.myLooper())
 
             //Start the timer to send all 5 min a MAPM file
-            timerHandler.postDelayed(timerRunnable, (TIME_TO_WAIT_BEFORE_SEND_MAPM * 1000 * 60).toLong())
+            timerHandler.postDelayed(timerRunnable, (TIME_TO_WAIT_BEFORE_SEND_MAPM).toLong())
             //Start the timer for evnt no fix and no fix persistent
             countDownTimerNoFix.start()
 
@@ -422,20 +398,14 @@ class JourneyLocationService : Service() {
         }
     }
 
-    fun getTimeStart(): Long{
-        return serviceInformations.startTime
-    }
-
     fun getJourney(): Journey{
         return journey!!
     }
 
-    fun setServiceInformationsStates(states: LocationSettingsStates){
-        serviceInformations.locationSettingsStates = states
-        Log.d(TAG,"isLocationUsable : ${serviceInformations.locationSettingsStates?.isLocationUsable}")
-        Log.d(TAG,"isLocationPresent : ${serviceInformations.locationSettingsStates?.isLocationPresent}")
-        Log.d(TAG,"isGpsPresent : ${serviceInformations.locationSettingsStates?.isGpsPresent}")
-        Log.d(TAG,"isGpsUsable : ${serviceInformations.locationSettingsStates?.isGpsUsable}")
+    fun setServiceInformationsStates(isGpsPresent: Boolean, isGpsUsable: Boolean){
+        //Log.d(TAG,"setServiceInformationsStates()")
+        serviceInformations.isGpsPresent = isGpsPresent
+        serviceInformations.isGpsUsable = isGpsUsable
         broadCastServiceInformations()
     }
 
@@ -525,7 +495,7 @@ class JourneyLocationService : Service() {
                         } catch (e: InterruptedException) {
                             Log.d("TAG", "sleep failure")
                         }
-                        incr += 5
+                        incr += 20
                     }
                     // When the loop is finished, updates the notification
                     notificationCompatBuilder.setContentText("Download completed") // Removes the progress bar
@@ -562,8 +532,16 @@ class JourneyLocationService : Service() {
     }
 
     private fun broadCastServiceInformations(){
+        //Log.d(TAG,"broadCastServiceInformations")
         val intent = Intent(ACTION_SERVICE_LOCATION_BROADCAST_INFORMATIONS)
         intent.putExtra(EXTRA_INFORMATIONS, serviceInformations)
+        LocalBroadcastManager.getInstance(applicationContext).sendBroadcast(intent)
+    }
+
+    private fun broadCastJourneyInformations(){
+        //Log.d(TAG,"broadCastServiceInformations")
+        val intent = Intent(ACTION_SERVICE_LOCATION_BROADCAST_JOURNEY)
+        intent.putExtra(EXTRA_JOURNEY, journey)
         LocalBroadcastManager.getInstance(applicationContext).sendBroadcast(intent)
     }
 
@@ -661,24 +639,44 @@ class JourneyLocationService : Service() {
             when(intent.action){
                 //Mode changed
                 LocationManager.MODE_CHANGED_ACTION -> {
-                    Log.d(TAG,"ACTION_SERVICE_LOCATION_BROADCAST_MODE_CHANGED")
+                    //Log.d(TAG,"ACTION_SERVICE_LOCATION_BROADCAST_MODE_CHANGED")
+                    val lm = getSystemService(Context.LOCATION_SERVICE) as LocationManager
+                    val isGpsEnabled = lm.isProviderEnabled(LocationManager.GPS_PROVIDER)
+                    val isNetworkEnabled = lm.isProviderEnabled(LocationManager.NETWORK_PROVIDER)
+
+                    serviceInformations.isGpsUsable = isGpsEnabled
+                    broadCastServiceInformations()
+
+                    if(isGpsEnabled || isNetworkEnabled){
+                        //Log.d(TAG,"La localisation est activé !")
+                    }
+                    else{
+                        //Log.d(TAG,"La localisation est désactivé !")
+                        if(serviceRunning)
+                            eventManager.writeEvent(Event(Event.EVNT_GPS_NO_COMMUNICATION), SystemClock.elapsedRealtimeNanos())
+                    }
+                }
+                //Mode changed
+                LocationManager.PROVIDERS_CHANGED_ACTION -> {
+                    //Log.d(TAG,"PROVIDERS_CHANGED_ACTION")
                     val lm = getSystemService(Context.LOCATION_SERVICE) as LocationManager
                     val isGpsEnabled = lm.isProviderEnabled(LocationManager.GPS_PROVIDER)
                     val isNetworkEnabled = lm.isProviderEnabled(LocationManager.NETWORK_PROVIDER)
 
                     if(isGpsEnabled || isNetworkEnabled){
-                        Log.d(TAG,"La localisation est activé !")
+                        //Log.d(TAG,"La localisation est activé !")
                     }
                     else{
-                        Log.d(TAG,"La localisation est désactivé !")
-                        eventManager.writeEvent(Event(Event.EVNT_GPS_NO_COMMUNICATION), SystemClock.elapsedRealtimeNanos())
+                        //Log.d(TAG,"La localisation est désactivé !")
+                        if(serviceRunning)
+                            eventManager.writeEvent(Event(Event.EVNT_GPS_NO_COMMUNICATION), SystemClock.elapsedRealtimeNanos())
                     }
                 }
                 Intent.ACTION_BATTERY_LOW -> {
-                    Log.d(TAG,"Le niveau de la batterie est faible : ${getBatteryPercentage(applicationContext)}")
+                    //Log.d(TAG,"Le niveau de la batterie est faible : ${getBatteryPercentage(applicationContext)}")
                 }
                 Intent.ACTION_BATTERY_OKAY -> {
-                    Log.d(TAG,"Le niveau de la batterie est ok : ${getBatteryPercentage(applicationContext)}")
+                    //Log.d(TAG,"Le niveau de la batterie est ok : ${getBatteryPercentage(applicationContext)}")
                 }
                 //Intent.ACTION_BATTERY_CHANGED -> {
                 //    Log.d(TAG,"Le niveau de batterie à changé : ${getBatteryPercentage(applicationContext)}")
@@ -704,11 +702,10 @@ class JourneyLocationService : Service() {
 
         private const val NOTIFICATION_CHANNEL_FILE_ID = "while_in_use_channel_02"
 
-        private const val TIME_TO_WAIT_BEFORE_SEND_MAPM = 5
+        private const val TIME_TO_WAIT_BEFORE_SEND_MAPM = 20 * 1000
 
-        private const val TIME_TO_WAIT_FOR_NO_FIX: Long = 5
+        private const val TIME_TO_WAIT_FOR_NO_FIX: Long = 2 * 60 * 1000
 
-        private const val REQUEST_CHECK_SETTINGS = 1
         // ################################################ //
 
         // #################### ACTIONS #################### //
@@ -718,6 +715,9 @@ class JourneyLocationService : Service() {
         internal const val ACTION_SERVICE_LOCATION_BROADCAST_INFORMATIONS =
             "$PACKAGE_NAME.action.FOREGROUND_ONLY_LOCATION_BROADCAST_LOCATION"
 
+        internal const val ACTION_SERVICE_LOCATION_BROADCAST_JOURNEY =
+            "$PACKAGE_NAME.action.FOREGROUND_ONLY_LOCATION_BROADCAST_JOURNEY"
+
         internal const val ACTION_SERVICE_LOCATION_BROADCAST_CHECK_REQUEST =
             "$PACKAGE_NAME.action.ACTION_FOREGROUND_ONLY_LOCATION_BROADCAST_CHECK_REQUEST"
         // ################################################ //
@@ -725,8 +725,7 @@ class JourneyLocationService : Service() {
         // #################### EXTRAS #################### //
         internal const val EXTRA_INFORMATIONS = "$PACKAGE_NAME.extra.LOCATION"
 
-        private const val EXTRA_CANCEL_LOCATION_TRACKING_FROM_NOTIFICATION =
-            "$PACKAGE_NAME.extra.CANCEL_LOCATION_TRACKING_FROM_NOTIFICATION"
+        internal const val EXTRA_JOURNEY = "$PACKAGE_NAME.extra.JOURNEY"
 
         internal const val EXTRA_CHECK_REQUEST = "$PACKAGE_NAME.extra.CHECK_REQUEST"
         // ################################################ //
