@@ -420,7 +420,6 @@ class JourneyActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenc
         }
 
         send_file_text.isVisible = serviceInfos.isSending
-        Log.d(TAG,"Envoi du fichier il doit etre visible ? : ${serviceInfos.isSending}")
     }
 
     private fun journeyInformationsToScreen(journey: Journey) {

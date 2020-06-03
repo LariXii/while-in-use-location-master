@@ -4,6 +4,7 @@ import android.location.Location
 import android.os.Parcel
 import android.os.Parcelable
 import android.os.SystemClock
+import android.util.Log
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 
@@ -86,8 +87,8 @@ class Localisation(private val _sequenceNumber: Int, private val location: Locat
         c7 = date.format(formatter)
 
         if(location != null){
-            c8 = location.latitude
-            c9 = location.longitude
+            c8 = location.latitude * 1000000
+            c9 = location.longitude * 1000000
             c10 = location.speed
             c11 = location.bearing
             c12 = location.accuracy/5

@@ -250,7 +250,7 @@ class JourneyLocationService : Service() {
         }
 
         // TODO Supprimer tous les fichiers (clean up)
-        //cleanUpFiles()
+        MyFileUtils.cleanUpFiles(applicationContext)
 
     }
 
@@ -702,7 +702,7 @@ class JourneyLocationService : Service() {
 
         private const val NOTIFICATION_CHANNEL_FILE_ID = "while_in_use_channel_02"
 
-        private const val TIME_TO_WAIT_BEFORE_SEND_MAPM = 20 * 1000
+        private const val TIME_TO_WAIT_BEFORE_SEND_MAPM = 5 * 60 * 1000
 
         private const val TIME_TO_WAIT_FOR_NO_FIX: Long = 2 * 60 * 1000
 
