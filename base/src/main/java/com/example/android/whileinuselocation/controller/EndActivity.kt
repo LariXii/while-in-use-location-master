@@ -22,6 +22,7 @@ class EndActivity: AppCompatActivity() {
             firstActivityIntent.flags = Intent.FLAG_ACTIVITY_CLEAR_TOP
             startActivity(firstActivityIntent)
             finish()
+            stopService(Intent(applicationContext, JourneyLocationService::class.java))
         }
     }
 

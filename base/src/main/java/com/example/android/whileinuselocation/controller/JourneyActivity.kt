@@ -39,6 +39,7 @@ import com.example.android.whileinuselocation.R
 import com.example.android.whileinuselocation.SharedPreferenceUtil
 import com.example.android.whileinuselocation.model.Journey
 import com.example.android.whileinuselocation.model.ServiceInformations
+import com.example.android.whileinuselocation.model.User
 import com.google.android.gms.common.api.ResolvableApiException
 import com.google.android.gms.location.*
 import com.google.android.material.snackbar.Snackbar
@@ -178,7 +179,7 @@ class JourneyActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenc
 
     override fun onStart() {
         super.onStart()
-        //Log.d(TAG,"onStart Activity")
+        Log.d(TAG,"onStart Activity")
 
         //Lors d'un changement d'une préférence appelle un listener qui est this
         sharedPreferences.registerOnSharedPreferenceChangeListener(this)
@@ -193,8 +194,12 @@ class JourneyActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenc
             journeyLocationServiceBroadcastReceiver,IntentFilter(JourneyLocationService.ACTION_SERVICE_LOCATION_BROADCAST_JOURNEY)
         )
 
+        val menuIntent: Intent = intent
+        val user = menuIntent.getParcelableExtra<User>("com.example.android.whileinuselocation.extra.USER")
+
         //Liaison du service de localisation avec l'activité principale
         val serviceIntent = Intent(this, JourneyLocationService::class.java)
+        serviceIntent.putExtra("com.example.android.whileinuselocation.extra.USER",user)
         bindService(serviceIntent, journeyLocationServiceConnection, Context.BIND_AUTO_CREATE)
     }
 

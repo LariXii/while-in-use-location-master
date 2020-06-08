@@ -1,5 +1,7 @@
 package com.example.android.whileinuselocation.controller
 
+import android.annotation.SuppressLint
+import android.app.Dialog
 import android.content.*
 import android.os.Bundle
 import android.text.Editable
@@ -7,14 +9,25 @@ import android.text.TextWatcher
 import android.util.Log
 import android.view.Menu
 import android.view.MenuItem
+import android.view.View
 import android.widget.EditText
+import android.widget.NumberPicker
+import android.widget.TextView
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.isVisible
+import androidx.fragment.app.DialogFragment
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import com.example.android.whileinuselocation.R
 import com.example.android.whileinuselocation.SharedPreferenceUtil
+import com.example.android.whileinuselocation.model.MyFileUtils
+import com.example.android.whileinuselocation.model.User
 import kotlinx.android.synthetic.main.activity_menu_principal.*
+import kotlinx.android.synthetic.main.dialog_number_picker.*
+import java.io.File
+import java.io.FileInputStream
+import java.time.LocalDateTime
 
 private const val TAG = "TruckTracker_Form"
 
@@ -28,13 +41,15 @@ class MenuPrincipalActivity: AppCompatActivity(), TextWatcher, SharedPreferences
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_menu_principal)
 
-        sharedPreferences = getSharedPreferences(getString(R.string.preference_file_key), Context.MODE_PRIVATE)
+        /*val file = File(applicationContext.filesDir,"mapm.csv")
+        val fileStream = applicationContext.openFileOutput(file.name, Context.MODE_PRIVATE)
+        fileStream.write("Franz jagt im komplett verwahrlosten Taxi quer durch Bayern".toByteArray())
+        fileStream.close()
+        Log.d(TAG,"Contenu : ${file.readText()}")
+        val nom = MyFileUtils.getMD5EncryptedString(file.readBytes())
+        Log.d(TAG,"MD5 CheckSum : $nom \nComparaison avec le code : ${nom == "a3cca2b2aa1e3b5b3b5aad99a8529074"} ${nom == "d41d8cd98f00b204e9800998ecf8427e"}")*/
 
-        if(sharedPreferences.getBoolean(SharedPreferenceUtil.KEY_FOREGROUND_ENABLED,false)){
-            val locationActivity = Intent(this, JourneyActivity::class.java)
-            startActivity(locationActivity)
-            finish()
-        }
+        sharedPreferences = getSharedPreferences(getString(R.string.preference_file_key), Context.MODE_PRIVATE)
 
         sharedPreferences.registerOnSharedPreferenceChangeListener(this)
 
@@ -48,10 +63,24 @@ class MenuPrincipalActivity: AppCompatActivity(), TextWatcher, SharedPreferences
                 || sharedPreferences.contains(SharedPreferenceUtil.KEY_TRAILER_AXLES)
 
         //Ajout d'un écouteur de changement de texte sur les champs du formulaire
-        act_menu_txt_ess_tracteur.addTextChangedListener(this)
-        act_menu_txt_ess_remorque.addTextChangedListener(this)
         act_menu_txt_nom.addTextChangedListener(this)
+
+        act_menu_txt_ess_tracteur.addTextChangedListener(this)
+        act_menu_txt_ess_tracteur.showSoftInputOnFocus = false
+        act_menu_txt_ess_tracteur.setOnClickListener {
+            numberPickerCustom(INFORMATIONTRUCK.TRACTOR_AXLES)
+        }
+        act_menu_txt_ess_remorque.addTextChangedListener(this)
+        act_menu_txt_ess_remorque.showSoftInputOnFocus = false
+        act_menu_txt_ess_remorque.setOnClickListener {
+            numberPickerCustom(INFORMATIONTRUCK.TRAILER_AXLES)
+        }
+
         act_menu_txt_roue.addTextChangedListener(this)
+        act_menu_txt_roue.showSoftInputOnFocus = false
+        act_menu_txt_roue.setOnClickListener {
+            numberPickerCustom(INFORMATIONTRUCK.TYRE_TYPE)
+        }
 
         //Ajout d'un tag pour chaque champs du formulaire comme étant leur clé pour SharedPreference
         act_menu_txt_nom.tag =
@@ -65,13 +94,18 @@ class MenuPrincipalActivity: AppCompatActivity(), TextWatcher, SharedPreferences
 
         //Ajout d'un écouteur de click sur le bouton de validation des informations
         act_menu_btn_valider.setOnClickListener{
+            val user = User(act_menu_txt_nom.text.toString(),
+                (act_menu_txt_roue.text.toString().toInt()),
+                (act_menu_txt_ess_remorque.text.toString().toInt()),
+                (act_menu_txt_ess_tracteur.text.toString().toInt()))
+            Log.d(TAG,"User : $user")
             val locationActivity = Intent(this, JourneyActivity::class.java)
+            locationActivity.putExtra("com.example.android.whileinuselocation.extra.USER", user)
             startActivity(locationActivity)
         }
 
         //Ajout d'un écouteur de click sur le bouton de sauvegarde des informations de l'utilisateur
         act_menu_btn_save.setOnClickListener{
-            // TODO Sauvegarder les informations de l'utilisateur
             for(txt in listTextForm){
                 if(txt.text.isNotEmpty()){
                     SharedPreferenceUtil.saveMenuInfo(
@@ -114,6 +148,34 @@ class MenuPrincipalActivity: AppCompatActivity(), TextWatcher, SharedPreferences
             txt.setText(sharedPreferences.getString(txt.tag.toString(), null))
         }
 
+        if(sharedPreferences.getBoolean(SharedPreferenceUtil.KEY_FOREGROUND_ENABLED,false)){
+            val locationActivity = Intent(this, JourneyActivity::class.java)
+            startActivity(locationActivity)
+            finish()
+        }
+
+    }
+
+    private fun numberPickerCustom(info: INFORMATIONTRUCK) {
+        val d = AlertDialog.Builder(this)
+        val inflater = this.layoutInflater
+        val dialogView = inflater.inflate(R.layout.dialog_number_picker, null)
+        d.setTitle(info.title)
+        d.setView(dialogView)
+        val numberPicker = dialogView.findViewById<NumberPicker>(R.id.number_picker)
+        numberPicker.maxValue = info.maxValue
+        numberPicker.minValue = info.minValue
+        numberPicker.wrapSelectorWheel = false
+        numberPicker.setOnValueChangedListener { _, _, _ -> println("onValueChange: ") }
+        d.setPositiveButton("Valider") { _, _ ->
+            for(txt in listTextForm){
+                if(txt.tag == info.tag){
+                    txt.setText(numberPicker.value.toString())
+                }
+            }
+        }
+        val alertDialog = d.create()
+        alertDialog.show()
     }
 
     override fun onCreateOptionsMenu(menu: Menu?): Boolean {
@@ -152,5 +214,11 @@ class MenuPrincipalActivity: AppCompatActivity(), TextWatcher, SharedPreferences
                 || sharedPreferences.contains(SharedPreferenceUtil.KEY_TRAILER_AXLES)
     }
 
+}
+
+enum class INFORMATIONTRUCK(val title: String, val minValue: Int, val maxValue: Int, val tag: String){
+    TYRE_TYPE("Type de roue : ",1,3, SharedPreferenceUtil.KEY_TYRE_TYPE),
+    TRAILER_AXLES("Nombre d'essieu de la remorque : ",1,7, SharedPreferenceUtil.KEY_TRAILER_AXLES),
+    TRACTOR_AXLES("Nombre d'essieu du tracteur : ",1,7, SharedPreferenceUtil.KEY_TRACTOR_AXLES)
 }
 

@@ -2,12 +2,10 @@ package com.example.android.whileinuselocation.manager
 
 import android.content.Context
 import android.os.SystemClock
-import android.util.Log
 import com.example.android.whileinuselocation.model.Event
 import com.example.android.whileinuselocation.model.MyFileUtils
 import java.io.File
 import java.io.FileOutputStream
-import java.lang.Exception
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 
@@ -15,9 +13,11 @@ import java.time.format.DateTimeFormatter
  * This classe is used to create event file and manage his writting content
  */
 class EventManager(_context: Context, _obuId: Int, _manufacturerId: Int, _contractProviderId: Int) {
-    private var fileStream: FileOutputStream? = null
-    private val emApplicationContext = _context
-    private var name: String? = null
+    private val applicationContext = _context
+
+    private lateinit var fileStream: FileOutputStream
+    private lateinit var name: String
+    private lateinit var fileDateTime: LocalDateTime
 
     //ID row
     private var c1: Int = 0
@@ -28,34 +28,43 @@ class EventManager(_context: Context, _obuId: Int, _manufacturerId: Int, _contra
     //CONTRACT PROVIDER ID
     private val c4: Int = _contractProviderId
 
-    private val formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss'Z'")
-
-    fun openFile(){
-        name = MyFileUtils.nameFiles(MyFileUtils.TYPE_EVNT, MyFileUtils.CSV_EXT)
-        File(emApplicationContext.filesDir, name!!)
-        fileStream = emApplicationContext.openFileOutput(name, Context.MODE_PRIVATE)
+    fun openFile(): String{
+        //Set the date of writing file
+        fileDateTime = LocalDateTime.now()
+        //Give an temporary name to the file
+        name = "${MyFileUtils.TYPE_EVNT}.${MyFileUtils.TMP_EXT}"
+        File(applicationContext.filesDir, name)
+        //Open file stream
+        fileStream = applicationContext.openFileOutput(name, Context.MODE_PRIVATE)
+        return name
     }
     fun closeFile(): String{
-        assert(fileStream != null)
-        assert(name != null)
+        fileStream.close()
+        //Get the file
+        val file = File(applicationContext.filesDir,name)
+        //Convert file content to Bytes
+        val fileContent = file.readBytes()
+        //Generate name for the file
+        val newFileName = MyFileUtils.nameFile(fileContent,fileDateTime,MyFileUtils.TYPE_EVNT,MyFileUtils.CSV_EXT)
+        //Rename the file with the new name
+        file.renameTo(File(applicationContext.filesDir, newFileName))
+        return name
 
-        fileStream?.close()
-        return name!!
     }
-    fun writeEvent(evnt: Event, et: Long){
-        assert(fileStream != null)
-
-        val toSecond = 1000000000
-        //Calcul de la date précise à laquelle est arrivé l'event
-        val etCurrent = SystemClock.elapsedRealtimeNanos()
-        val diff = (etCurrent - et) / toSecond
-        //Création de l'objet date
-        val date = LocalDateTime.now().minusSeconds(diff)
-        val c10 = date.format(formatter)
+    fun writeEvent(evnt: Event){
+        val sep = MyFileUtils.SEP
+        val eof = MyFileUtils.EOF
         //ProxyTime
         val c11 = null
 
-        fileStream?.write("$c1;$c2;$c3;$c4;$evnt;\"$c10\";${c11?:""};\r\n".toByteArray())
+        fileStream.write(("$c1$sep" +
+                "$c2$sep" +
+                "$c3$sep" +
+                "$c4$sep" +
+                "$evnt$sep" +
+                "${c11?:""}$sep" +
+                eof
+                ).toByteArray())
         c1++
     }
 }

@@ -26,11 +26,11 @@ import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import com.example.android.whileinuselocation.R
 import com.example.android.whileinuselocation.SharedPreferenceUtil
 import com.example.android.whileinuselocation.manager.EventManager
+import com.example.android.whileinuselocation.manager.MAPMManager
 import com.example.android.whileinuselocation.model.*
 import com.google.android.gms.common.api.ResolvableApiException
 import com.google.android.gms.location.*
 import java.io.File
-import java.io.FileOutputStream
 
 /**
  * Service tracks location when requested and updates Activity via binding. If Activity is
@@ -56,8 +56,6 @@ class JourneyLocationService : Service() {
     private var noFixHappened = 0
 
     // ########################### FILES ########################### //
-    private var fileStream: FileOutputStream? = null
-
     private lateinit var fileWriting: String
 
     private val filesUploading: MutableList<String> = mutableListOf()
@@ -72,6 +70,8 @@ class JourneyLocationService : Service() {
     private lateinit var locationManager: LocationManager
 
     private lateinit var eventManager: EventManager
+
+    private lateinit var mapmManager: MAPMManager
 
     private val contextServiceBroadcastReceiver = ContextServiceBroadcastReceiver()
 
@@ -89,9 +89,10 @@ class JourneyLocationService : Service() {
     // Used only for local storage of the last known location. Usually, this would be saved to your
     // database, but because this is a simplified sample without a full database, we only need the
     // last location to create a Notification if the user navigates away from the app.
-    private var currentLocation: Localisation? = null
+    private lateinit var currentLocation: Localisation
 
-    private var journey: Journey? = null
+    private lateinit var journey: Journey
+    private lateinit var user: User
 
     val countDownTimerNoFix = CountDownTimerNoFix(TIME_TO_WAIT_FOR_NO_FIX,1000)
     var timerHandler: Handler = Handler()
@@ -106,7 +107,10 @@ class JourneyLocationService : Service() {
             }
 
             //Création du nouveau fichier dans lequel écrire et changement du flux sur celui-ci
-            createFileToWrite()
+            mapmManager.closeFile()
+            val name = mapmManager.openFile()
+            fileWriting = name
+            filesUploading.add(fileWriting)
 
             //Envoi du fichier au serveur
             uploadFile()
@@ -120,10 +124,6 @@ class JourneyLocationService : Service() {
 
         notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
-
-        Log.d(TAG,"La permission d'utiliser le WIFI pour la localisation est activé : ${locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)}")
-        Log.d(TAG,"La permission d'utiliser le GPS est activé : ${locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)}")
-
         eventManager = EventManager(applicationContext,399367311, 3, 10747906)
 
         registerReceiver(contextServiceBroadcastReceiver, IntentFilter(LocationManager.MODE_CHANGED_ACTION))
@@ -178,25 +178,19 @@ class JourneyLocationService : Service() {
                     noFixHappened = 0
 
                     for(loc in locationResult.locations){
-                        currentLocation =
-                            Localisation(
-                                idLocation++,
-                                loc,
-                                1,
-                                2,
-                                3
-                            )
+                        currentLocation = Localisation(loc)
+                        journey.addLocation(currentLocation)
 
-                        journey!!.addLocation(currentLocation!!)
-
+                        // Write event if location isFromMockProvider = true
                         if(loc.isFromMockProvider){
-                            eventManager.writeEvent(Event(Event.EVNT_GPS_FROM_MOCK_PROVIDER),SystemClock.elapsedRealtimeNanos())
+                            eventManager.writeEvent(Event(EventCode.GPS_FROM_MOCK_PROVIDER))
                         }
+                        // Write new location
+                        mapmManager.writeLocation(currentLocation)
+
+                        //Send informations to the main activity about service and journey
                         broadCastServiceInformations()
                         broadCastJourneyInformations()
-
-                        // Ecriture des localisations dans le fichier interne ouvert
-                        fileStream?.write(currentLocation!!.toMAPM().toByteArray())
                     }
 
                 } else {
@@ -216,31 +210,29 @@ class JourneyLocationService : Service() {
                         val task = LocationServices.getSettingsClient(applicationContext).checkLocationSettings(builderSettingsLocation.build())
 
                         task.addOnSuccessListener { response ->
-                            //Log.d(TAG,"task.onSuccess")
                             val states = response.locationSettingsStates
-                            // TODO STATES
+                            serviceInformations.isGpsUsable = states.isGpsUsable
+                            serviceInformations.isGpsPresent = states.isGpsPresent
                             broadCastServiceInformations()
                         }
                         task.addOnFailureListener { e ->
                             //Log.d(TAG,"task.onFailure")
                             if (e is ResolvableApiException) {
                                 try {
-                                    //Si le service tourne en premier plan
+                                    //If service is running in foreground
                                     if(serviceRunningInForeground){
-                                        //On lance l'activité pour résoudre le problème
+                                        //Start activity to resolve problem
                                         val intent = Intent(applicationContext, JourneyActivity::class.java)
                                         startActivity(intent)
                                     }
                                     else{
-                                        //On envoi un message à l'activité pour résoudre le problème
+                                        // Send Intent to resolve problem
                                         val intent = Intent(
                                             ACTION_SERVICE_LOCATION_BROADCAST_CHECK_REQUEST
                                         )
                                         intent.putExtra(EXTRA_CHECK_REQUEST, e.resolution)
                                         LocalBroadcastManager.getInstance(applicationContext).sendBroadcast(intent)
                                     }
-                                    // Handle result in onActivityResult()
-                                    //e.startResolutionForResult(this, REQUEST_CHECK_SETTINGS)
                                 } catch (sendEx: IntentSender.SendIntentException) { }
                             }
                         }
@@ -261,6 +253,9 @@ class JourneyLocationService : Service() {
 
     override fun onBind(intent: Intent): IBinder? {
         Log.d(TAG, "onBind()")
+
+        user = intent.getParcelableExtra("com.example.android.whileinuselocation.extra.USER")!!
+        mapmManager = MAPMManager(applicationContext,399367311, 3, 10747906,user.tyreType,user.trailerAxles,user.tractorAxles)
 
         // MainActivity (client) comes into foreground and binds to service, so the service can
         // become a background services.
@@ -316,7 +311,7 @@ class JourneyLocationService : Service() {
         Log.d(TAG, "subscribeToLocationUpdates()")
 
         journey = Journey()
-        journey!!.startJourney()
+        journey.startJourney()
 
         SharedPreferenceUtil.saveLocationTrackingPref(
             this,
@@ -335,11 +330,13 @@ class JourneyLocationService : Service() {
 
             //Start the timer to send all 5 min a MAPM file
             timerHandler.postDelayed(timerRunnable, (TIME_TO_WAIT_BEFORE_SEND_MAPM).toLong())
-            //Start the timer for evnt no fix and no fix persistent
+            //Start the timer for event no fix and no fix persistent
             countDownTimerNoFix.start()
 
             //Création du fichier MAPM
-            createFileToWrite()
+            val name = mapmManager.openFile()
+            fileWriting = name
+            filesUploading.add(fileWriting)
             //Création du fichier de log EVNT
             eventManager.openFile()
 
@@ -364,6 +361,8 @@ class JourneyLocationService : Service() {
                 if (task.isSuccessful) {
                     Log.d(TAG, "Location Callback removed.")
                     countDownTimerNoFix.cancel()
+                    // Stop journey
+                    journey.stopJourney()
                     //stopSelf()
                 } else {
                     Log.d(TAG, "Failed to remove Location Callback.")
@@ -374,16 +373,11 @@ class JourneyLocationService : Service() {
             timerHandler.removeCallbacks(timerRunnable)
 
             // Fermeture des streams des fichiers MAPM et EVNT
-            fileStream?.close()
-
+            val nameFileMAPM = mapmManager.closeFile()
             val nameFileEvnt = eventManager.closeFile()
-            //TODO upload nameFileEvnt uploadFile(nameFileEvnt)
-
+            //TODO upload nameFileEvnt uploadFile(nameFileEvnt)+
             // Envoi du fichier en cours d'écriture à la fin du service
             uploadFile()
-
-            // Arrêt du trajet
-            journey!!.stopJourney()
 
             // Sauvegarde de l'état du service (ici arrêté) dans les préférences
             SharedPreferenceUtil.saveLocationTrackingPref(this, false)
@@ -399,7 +393,7 @@ class JourneyLocationService : Service() {
     }
 
     fun getJourney(): Journey{
-        return journey!!
+        return journey
     }
 
     fun setServiceInformationsStates(isGpsPresent: Boolean, isGpsUsable: Boolean){
@@ -427,19 +421,6 @@ class JourneyLocationService : Service() {
             percentage = (batteryPct ?: -1) as Int
         }
         return percentage
-    }
-
-    private fun createFileToWrite(){
-        // Création du fichier
-        val name = MyFileUtils.nameFiles(MyFileUtils.TYPE_MAPM,MyFileUtils.CSV_EXT)
-        File(applicationContext.filesDir, name)
-        // Sauvegarde du nom du fichier en cours d'écriture
-        fileWriting = name
-        //Ajout du fichier dans la liste des fichiers à uploader
-        filesUploading.add(name)
-        // Ouverture du fichier
-        fileStream = applicationContext.openFileOutput(fileWriting, Context.MODE_PRIVATE)
-        Log.d(TAG,"Fichier en cours d'écriture : $fileWriting")
     }
 
     private fun createNotificationUpload(): NotificationCompat.Builder{
@@ -614,11 +595,11 @@ class JourneyLocationService : Service() {
         override fun onFinish() {
             if(noFixHappened >= 5){
                 Log.d(TAG,"onFinish CountDownTimerNoFix > 5")
-                eventManager.writeEvent(Event(Event.EVNT_GPS_NO_FIX_PERSISTENT), SystemClock.elapsedRealtimeNanos())
+                eventManager.writeEvent(Event(EventCode.GPS_NO_FIX_PERSISTENT))
             }
             else{
                 Log.d(TAG,"onFinish CountDownTimerNoFix")
-                eventManager.writeEvent(Event(Event.EVNT_GPS_NO_FIX), SystemClock.elapsedRealtimeNanos())
+                eventManager.writeEvent(Event(EventCode.GPS_NO_FIX))
             }
             noFixHappened++
             countDownTimerNoFix.start()
@@ -653,7 +634,7 @@ class JourneyLocationService : Service() {
                     else{
                         //Log.d(TAG,"La localisation est désactivé !")
                         if(serviceRunning)
-                            eventManager.writeEvent(Event(Event.EVNT_GPS_NO_COMMUNICATION), SystemClock.elapsedRealtimeNanos())
+                            eventManager.writeEvent(Event(EventCode.GPS_NO_COMMUNICATION))
                     }
                 }
                 //Mode changed
@@ -669,7 +650,7 @@ class JourneyLocationService : Service() {
                     else{
                         //Log.d(TAG,"La localisation est désactivé !")
                         if(serviceRunning)
-                            eventManager.writeEvent(Event(Event.EVNT_GPS_NO_COMMUNICATION), SystemClock.elapsedRealtimeNanos())
+                            eventManager.writeEvent(Event(EventCode.GPS_NO_COMMUNICATION))
                     }
                 }
                 Intent.ACTION_BATTERY_LOW -> {

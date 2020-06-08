@@ -1,61 +1,61 @@
 package com.example.android.whileinuselocation.model
 
-class Event(_id: Int, _paramA: Int? = null, _paramB: Int? = null, _paramC: Int? = null) {
-    private val evntId = _id
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
+
+class Event(_evntCode: EventCode, _paramA: Int? = null, _paramB: Int? = null, _paramC: Int? = null) {
+    private val evntId: Int
+    private val evntName: String
+    private val evntSeverity: Int
     private val evntParamA = _paramA
     private val evntParamB = _paramB
     private val evntParamC = _paramC
-    private val evntName: String
+    private val evntDate: LocalDateTime = LocalDateTime.now()
+
+    private val formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss'Z'")
 
     init{
-        val name: String
-        when(_id){
-            11000 -> {
+        when(_evntCode){
+            EventCode.GPS_NO_COMMUNICATION -> {
                 assert(_paramA == null)
                 assert(_paramB == null)
                 assert(_paramC == null)
-                name = "GPS no communication"
             }
-            11001 -> {
+            EventCode.GPS_INTERFERENCE -> {
                 assert(_paramA != null)
                 assert(_paramB != null)
                 assert(_paramC == null)
-                name = "GPS interference"
             }
-            11003 -> {
+            EventCode.GPS_NO_FIX -> {
                 assert(_paramA == null)
                 assert(_paramB == null)
                 assert(_paramC == null)
-                name = "GPS no fix"
             }
-            11004 -> {
+            EventCode.GPS_NO_FIX_PERSISTENT -> {
                 assert(_paramA == null)
                 assert(_paramB == null)
                 assert(_paramC == null)
-                name = "GPS no fix persistent"
             }
-            11005 -> {
+            EventCode.GPS_FROM_MOCK_PROVIDER -> {
                 assert(_paramA == null)
                 assert(_paramB == null)
                 assert(_paramC == null)
-                name = "GPS location from mock provider"
-            }
-            else -> {
-                throw ClassFormatError("Event not handled")
             }
         }
-        evntName = name
+        evntId = _evntCode.num
+        evntName = _evntCode.mean
+        evntSeverity = _evntCode.error.num
     }
 
     override fun toString(): String {
-        return "$evntId;\"$evntName\";${evntParamA?:""};${evntParamB?:""};${evntParamC?:""}"
-    }
-
-    companion object{
-        const val EVNT_GPS_NO_COMMUNICATION = 11000
-        const val EVNT_GPS_INTERFERENCE = 11001
-        const val EVNT_GPS_NO_FIX = 11003
-        const val EVNT_GPS_NO_FIX_PERSISTENT = 11004
-        const val EVNT_GPS_FROM_MOCK_PROVIDER = 11005
+        val dateParsed = evntDate.format(formatter)
+        val sep = MyFileUtils.SEP
+        return "$evntId$sep" +
+                "\"$evntName\"$sep" +
+                "$evntSeverity$sep" +
+                "${evntParamA?:""}$sep" +
+                "${evntParamB?:""}$sep" +
+                "${evntParamC?:""}$sep" +
+                "\"$dateParsed\""
     }
 }

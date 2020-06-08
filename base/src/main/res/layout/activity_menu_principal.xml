@@ -37,47 +37,57 @@
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="parent">
 
-            <EditText
-                android:id="@+id/act_menu_txt_nom"
-                style="@style/Widget.AppCompat.EditText"
+            <LinearLayout
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_gravity="center_horizontal"
-                android:layout_margin="5dp"
-                android:ems="10"
-                android:hint="@string/hint_name"
-                android:inputType="textPersonName" />
+                android:layout_height="match_parent"
+                android:orientation="vertical">
 
-            <EditText
-                android:id="@+id/act_menu_txt_roue"
-                style="@style/Widget.AppCompat.EditText"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_gravity="center_horizontal"
-                android:layout_margin="5dp"
-                android:ems="10"
-                android:hint="@string/hint_tyre_type"
-                android:inputType="textPersonName" />
+                <EditText
+                    android:id="@+id/act_menu_txt_nom"
+                    style="@style/Widget.AppCompat.EditText"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center_horizontal"
+                    android:layout_margin="5dp"
+                    android:ems="10"
+                    android:hint="@string/hint_name"
+                    android:inputType="textPersonName" />
 
-            <EditText
-                android:id="@+id/act_menu_txt_ess_tracteur"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_gravity="center_horizontal"
-                android:layout_margin="5dp"
-                android:ems="10"
-                android:hint="@string/hint_tractor_axles"
-                android:inputType="textPersonName" />
+                <EditText
+                    android:id="@+id/act_menu_txt_roue"
+                    style="@style/Widget.AppCompat.EditText"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center_horizontal"
+                    android:layout_margin="5dp"
+                    android:editable="false"
+                    android:ems="10"
+                    android:hint="@string/hint_tyre_type"
+                    android:inputType="none" />
 
-            <EditText
-                android:id="@+id/act_menu_txt_ess_remorque"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_gravity="center_horizontal"
-                android:layout_margin="5dp"
-                android:ems="10"
-                android:hint="@string/hint_trailer_axles"
-                android:inputType="textPersonName" />
+                <EditText
+                    android:id="@+id/act_menu_txt_ess_remorque"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center_horizontal"
+                    android:layout_margin="5dp"
+                    android:editable="false"
+                    android:ems="10"
+                    android:hint="@string/hint_trailer_axles"
+                    android:inputType="none" />
+
+                <EditText
+                    android:id="@+id/act_menu_txt_ess_tracteur"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center_horizontal"
+                    android:layout_margin="5dp"
+                    android:editable="false"
+                    android:ems="10"
+                    android:hint="@string/hint_tractor_axles"
+                    android:inputType="none" />
+
+            </LinearLayout>
 
             <LinearLayout
                 android:layout_width="match_parent"

@@ -18,6 +18,8 @@
     package="com.example.android.whileinuselocation">
 
     <!-- Required for foreground services on P+. -->
+    <uses-permission android:name="android.permission.BLUETOOTH" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
 
     <!-- TODO: Step 1.0, Review Permissions: Specify permissions you are using. -->
@@ -31,7 +33,7 @@
         android:theme="@style/Theme.AppCompat.DayNight">
         <activity android:name=".controller.JourneyActivity"/>
         <activity android:name=".controller.EndActivity"/>
-        <activity android:name=".controller.MenuPrincipalActivity">
+        <activity android:name=".controller.MenuPrincipalActivity" android:windowSoftInputMode="stateAlwaysHidden">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>

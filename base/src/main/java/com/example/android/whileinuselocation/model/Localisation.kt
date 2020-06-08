@@ -8,70 +8,28 @@ import android.util.Log
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 
-class Localisation(private val _sequenceNumber: Int, private val location: Location?, private val _tyreType: Int, private val _tractorAxles: Int, private val _trailerAxles: Int): Parcelable{
-
-    //Identifiant de l'équipement
-    private val c1: Int = 399367311
-
-    //identifiant du frabricant
-    private val c2: Int = 3
-
-    //Identifiant du fournisseur de contrat
-    private val c3: Int = 10747906
-
-    //Identifiant du type de pneu
-    private val c4: Int = _tyreType
-
-    //Nombre d'essieu de remorque
-    private val c5: Int = _trailerAxles
-
-    //Nombre d'essieu du tracteur
-    private val c6: Int = _tractorAxles
-
+class Localisation(private val location: Location?): Parcelable{
     //Temps auquel est arrivé la localisation
     private val c7: String
-
     //Latitude
-    private val c8: Double
-
+    private val c8: Long
     //Longitude
-    private val c9: Double
-
+    private val c9: Long
     //Vitesse instantané
     private val c10: Float
-
     //Direction de la localisation
     private val c11: Float
-
     //Précision de la localisation
     private val c12: Float
-
     //Type de localisation
     private val c13: Int = 20
-
     //Numéro de séquence de la localisation
-    private val c14: Int = _sequenceNumber
-
+    //TODO Use system to store and load sequence number
+    private val c14: Int = 0
     //Altitude
     private val c15: Double
 
-    //Poids maximal que le camion peut supporter
-    private val c16: String = ""
-
-    //Code du pays
-    private val c17: String = "BE"
-
-    //Identifiant du fournisseur du domaine de péage
-    private val c18: Int = 16383
-
-    constructor(parcel: Parcel) : this(
-        parcel.readInt(),
-        parcel.readParcelable(Location::class.java.classLoader),
-        parcel.readInt(),
-        parcel.readInt(),
-        parcel.readInt()
-    ) {
-    }
+    private val formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss'Z'")
 
     init{
         //Calcul de la date réel de la localisation
@@ -83,12 +41,11 @@ class Localisation(private val _sequenceNumber: Int, private val location: Locat
         val ageTime = sTime - time!!
 
         val date = LocalDateTime.now().minusSeconds(ageTime)
-        val formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss'Z'")
         c7 = date.format(formatter)
 
         if(location != null){
-            c8 = location.latitude * 1000000
-            c9 = location.longitude * 1000000
+            c8 = (location.latitude * 1000000).toLong()
+            c9 = (location.longitude * 1000000).toLong()
             c10 = location.speed
             c11 = location.bearing
             c12 = location.accuracy/5
@@ -99,7 +56,7 @@ class Localisation(private val _sequenceNumber: Int, private val location: Locat
         }
     }
 
-    override fun toString(): String {
+    fun toReadable(): String {
         val speed = location?.speed
         val speedAccuracyMetersPerSecond = location?.speedAccuracyMetersPerSecond
 
@@ -124,16 +81,21 @@ class Localisation(private val _sequenceNumber: Int, private val location: Locat
         }
     }
 
-    fun toMAPM(): String{
-        return "$c1;$c2;$c3;$c4;$c5;$c6;\"$c7\";$c8;$c9;$c10;$c11;$c12;$c13;$c14;$c15;$c16;\"$c17\";$c18;\r\n"
+    override fun toString(): String{
+        val sep = MyFileUtils.SEP
+        return "\"$c7\"$sep" +
+                "$c8$sep" +
+                "$c9$sep" +
+                "$c10$sep" +
+                "$c11$sep" +
+                "$c12$sep" +
+                "$c13$sep" +
+                "$c14$sep" +
+                "$c15"
     }
 
     override fun writeToParcel(parcel: Parcel, flags: Int) {
-        parcel.writeInt(_sequenceNumber)
         parcel.writeParcelable(location, flags)
-        parcel.writeInt(_tyreType)
-        parcel.writeInt(_tractorAxles)
-        parcel.writeInt(_trailerAxles)
     }
 
     override fun describeContents(): Int {
@@ -142,15 +104,12 @@ class Localisation(private val _sequenceNumber: Int, private val location: Locat
 
     companion object CREATOR : Parcelable.Creator<Localisation> {
         override fun createFromParcel(parcel: Parcel): Localisation {
-            return Localisation(
-                parcel
-            )
+            return Localisation(parcel.readParcelable(Location::class.java.classLoader))
         }
 
         override fun newArray(size: Int): Array<Localisation?> {
             return arrayOfNulls(size)
         }
     }
-
 
 }

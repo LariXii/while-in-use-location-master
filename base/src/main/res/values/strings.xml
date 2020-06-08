@@ -56,4 +56,8 @@
 
     <string name="message_fin">Fin du trajet</string>
 
+    <string name="dialog_type_roue">Choissisez le type de roue</string>
+    <string name="dialog_essieu_tracteur">Choissisez le nombre d\'essieu du tracteur</string>
+    <string name="dialog_essieu_remorque">Choissisez le nombre d\'essieu de la remorque</string>
+
 </resources>

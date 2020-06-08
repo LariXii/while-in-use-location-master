@@ -65,7 +65,7 @@ class Journey() : Parcelable {
             durationParsed = formatter.format(Date(duration!!))
         }
 
-        return "Trajet commencé le : ${startDate?.format(dateFormatter)}\n" +
+        return "Trajet commencé le : ${startDate.format(dateFormatter)}\n" +
                 "Fini le : ${endDate?.format(dateFormatter)}\n" +
                 "Il a duré : $durationParsed\n" +
                 "Nombre de localisation reçu : ${numberOfLocalisation()}"
