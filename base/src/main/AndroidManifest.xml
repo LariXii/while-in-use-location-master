@@ -17,6 +17,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.example.android.whileinuselocation">
 
+    <uses-permission android:name="android.permission.INTERNET" />
+
     <!-- Required for foreground services on P+. -->
     <uses-permission android:name="android.permission.BLUETOOTH" />
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />

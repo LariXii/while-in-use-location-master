@@ -150,6 +150,11 @@ class MenuPrincipalActivity: AppCompatActivity(), TextWatcher, SharedPreferences
 
         if(sharedPreferences.getBoolean(SharedPreferenceUtil.KEY_FOREGROUND_ENABLED,false)){
             val locationActivity = Intent(this, JourneyActivity::class.java)
+            val user = User(act_menu_txt_nom.text.toString(),
+                (act_menu_txt_roue.text.toString().toInt()),
+                (act_menu_txt_ess_remorque.text.toString().toInt()),
+                (act_menu_txt_ess_tracteur.text.toString().toInt()))
+            locationActivity.putExtra("com.example.android.whileinuselocation.extra.USER", user)
             startActivity(locationActivity)
             finish()
         }

@@ -15,6 +15,7 @@
  */
 package com.example.android.whileinuselocation.controller
 
+import android.annotation.SuppressLint
 import android.app.*
 import android.content.*
 import android.content.res.Configuration
@@ -27,10 +28,15 @@ import com.example.android.whileinuselocation.R
 import com.example.android.whileinuselocation.SharedPreferenceUtil
 import com.example.android.whileinuselocation.manager.EventManager
 import com.example.android.whileinuselocation.manager.MAPMManager
+import com.example.android.whileinuselocation.manager.UploadFilesTask
 import com.example.android.whileinuselocation.model.*
 import com.google.android.gms.common.api.ResolvableApiException
 import com.google.android.gms.location.*
+import org.apache.commons.net.ftp.FTPClient
+import org.apache.commons.net.ftp.FTPReply
 import java.io.File
+import java.io.FileInputStream
+import kotlin.system.exitProcess
 
 /**
  * Service tracks location when requested and updates Activity via binding. If Activity is
@@ -107,15 +113,48 @@ class JourneyLocationService : Service() {
             }
 
             //Création du nouveau fichier dans lequel écrire et changement du flux sur celui-ci
-            mapmManager.closeFile()
+            val fileToSend = mapmManager.closeFile()
             val name = mapmManager.openFile()
             fileWriting = name
             filesUploading.add(fileWriting)
 
             //Envoi du fichier au serveur
-            uploadFile()
+            uploadFile(fileToSend)
 
             timerHandler.postDelayed(this, (TIME_TO_WAIT_BEFORE_SEND_MAPM).toLong())
+        }
+    }
+
+    private var notificationBuilder: NotificationCompat.Builder? = null
+
+    @SuppressLint("HandlerLeak")
+    val fileHandler: Handler =
+    object :Handler(){
+        override fun handleMessage(msg: Message) {
+            super.handleMessage(msg)
+            when(msg.what){
+                STATE_SEND ->{
+                    Log.d(TAG,"STATE SEND")
+                    notificationBuilder?.setProgress(100, 0, true)
+                    notificationManager.notify(NOTIFICATION_FILE_ID, notificationBuilder?.build())
+                }
+                STATE_SENT ->{
+                    Log.d(TAG,"STATE SENT")
+                    notificationBuilder?.setContentText("Download completed")
+                        ?.setProgress(100, 100, true)
+                    notificationManager.notify(NOTIFICATION_FILE_ID, notificationBuilder?.build())
+                }
+                STATE_ERROR ->{
+                    notificationBuilder?.setContentText("Download failure")
+                    notificationManager.notify(NOTIFICATION_FILE_ID, notificationBuilder?.build())
+                }
+                STATE_CLOSE ->{
+                    notificationBuilder?.setOngoing(false)
+                    //Suppression automatique de la notification
+                    notificationManager.notify(NOTIFICATION_FILE_ID, notificationBuilder?.build())
+                    notificationManager.cancel(NOTIFICATION_FILE_ID)
+                }
+            }
         }
     }
 
@@ -298,6 +337,7 @@ class JourneyLocationService : Service() {
     }
 
     override fun onDestroy() {
+        unregisterReceiver(contextServiceBroadcastReceiver)
         Log.d(TAG, "onDestroy()")
     }
 
@@ -377,7 +417,7 @@ class JourneyLocationService : Service() {
             val nameFileEvnt = eventManager.closeFile()
             //TODO upload nameFileEvnt uploadFile(nameFileEvnt)+
             // Envoi du fichier en cours d'écriture à la fin du service
-            uploadFile()
+            uploadFile(nameFileMAPM)
 
             // Sauvegarde de l'état du service (ici arrêté) dans les préférences
             SharedPreferenceUtil.saveLocationTrackingPref(this, false)
@@ -440,23 +480,22 @@ class JourneyLocationService : Service() {
                 NOTIFICATION_CHANNEL_ID
             )
 
-        notificationCompatBuilder
+        return notificationCompatBuilder
             .setContentTitle("Envoi du fichier")
             .setContentText("Envoi en cours")
             .setOngoing(true)
             .setSmallIcon(R.drawable.ic_upload)
             .setDefaults(NotificationCompat.DEFAULT_ALL)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-        return notificationCompatBuilder
     }
 
-    private fun uploadFile(){
+    private fun uploadFile(fileName: String){
         //Création de la notification pour afficher l'upload du fichier
-        val notificationCompatBuilder = createNotificationUpload()
+        notificationBuilder = createNotificationUpload()
 
         if(serviceRunning){
             // Start a the operation in a background thread
-            Thread(
+            /*Thread(
                 Runnable {
                     Log.d(TAG, "Envoi du fichier : ${filesUploading[0]}")
                     serviceInformations.isSending = true
@@ -508,7 +547,40 @@ class JourneyLocationService : Service() {
                     serviceInformations.isSending = false
                     broadCastServiceInformations()
                 } // Starts the thread by calling the run() method in its Runnable
+            ).start()*/
+            Log.d(TAG,"Lancement de l'upload")
+            Thread(
+                Runnable{
+                    val ftpClient = FTPClient()
+
+                    ftpClient.connect(SERVER_NAME)
+                    Log.d(TAG,"Connection au serveur FTP")
+
+                    val reply = ftpClient.replyCode
+
+                    if(!FTPReply.isPositiveCompletion(reply)){
+                        ftpClient.disconnect()
+                        Log.e(TAG,"FTP server refused connection")
+                        exitProcess(1)
+                    }
+
+                    ftpClient.login(LOGIN, PASSWORD)
+                    Log.d(TAG,"Login au serveur FTP")
+
+                    //Transfer File
+                    val ret = ftpClient.storeFile("mapm_files/$fileName", FileInputStream(File(applicationContext.filesDir,fileName)))
+                    if(ret){
+                        Log.d(TAG,"StoreFile")
+                    }
+                    else{
+                        //TODO Handle this event
+                    }
+                    ftpClient.logout()
+                    ftpClient.disconnect()
+                }
             ).start()
+            //UploadFilesTask(fileHandler).execute(SERVER_NAME,LOGIN, PASSWORD,fileName)
+            //notificationBuilder = null
         }
     }
 
@@ -675,6 +747,12 @@ class JourneyLocationService : Service() {
 
         private const val PACKAGE_NAME = "com.example.android.whileinuselocation"
 
+        private const val SERVER_NAME = "ftp.cluster029.hosting.ovh.net"
+
+        private const val LOGIN = "thecjub"
+
+        private const val PASSWORD = "s23Kpn9jgUS3"
+
         private const val NOTIFICATION_ID = 12345678
 
         private const val NOTIFICATION_FILE_ID = 87654321
@@ -683,7 +761,7 @@ class JourneyLocationService : Service() {
 
         private const val NOTIFICATION_CHANNEL_FILE_ID = "while_in_use_channel_02"
 
-        private const val TIME_TO_WAIT_BEFORE_SEND_MAPM = 5 * 60 * 1000
+        private const val TIME_TO_WAIT_BEFORE_SEND_MAPM = 1 * 60 * 1000
 
         private const val TIME_TO_WAIT_FOR_NO_FIX: Long = 2 * 60 * 1000
 
@@ -710,6 +788,14 @@ class JourneyLocationService : Service() {
 
         internal const val EXTRA_CHECK_REQUEST = "$PACKAGE_NAME.extra.CHECK_REQUEST"
         // ################################################ //
+
+        internal const val STATE_SEND = 0
+
+        internal const val STATE_SENT = 1
+
+        internal const val STATE_ERROR = 2
+
+        internal const val STATE_CLOSE = 3
     }
 }
 

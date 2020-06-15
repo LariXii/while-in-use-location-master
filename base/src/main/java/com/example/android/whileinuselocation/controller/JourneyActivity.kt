@@ -150,7 +150,7 @@ class JourneyActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenc
         foreground_only_location_button.setOnClickListener {
             //Récupèration de l'état de l'application
             val enabled = sharedPreferences.getBoolean(SharedPreferenceUtil.KEY_FOREGROUND_ENABLED, false)
-
+            //SharedPreferenceUtil.saveLocationTrackingPref(applicationContext,false)
             //Si la récupération des localisations était en cours on l'arrête
             if (enabled) {
                 //Lors d'un prochain clic on stop l'update de la localisation
@@ -214,6 +214,7 @@ class JourneyActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenc
             journeyLocationServiceBroadcastReceiver
         )*/
         super.onPause()
+
     }
 
     override fun onStop() {

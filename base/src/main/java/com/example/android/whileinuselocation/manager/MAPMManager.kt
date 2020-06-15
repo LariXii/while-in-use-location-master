@@ -55,9 +55,9 @@ class MAPMManager(_context: Context, _obuId: Int, _manufacturerId: Int, _contrac
         //Convert file content to Bytes
         val fileContent = file.readBytes()
         //Generate name for the file
-        val newFileName = MyFileUtils.nameFile(fileContent,fileDateTime,MyFileUtils.TYPE_MAPM,MyFileUtils.CSV_EXT)
+        name = MyFileUtils.nameFile(fileContent,fileDateTime,MyFileUtils.TYPE_MAPM,MyFileUtils.CSV_EXT)
         //Rename the file with the new name
-        file.renameTo(File(applicationContext.filesDir, newFileName))
+        file.renameTo(File(applicationContext.filesDir, name))
         return name
     }
     fun writeLocation(loc: Localisation){
