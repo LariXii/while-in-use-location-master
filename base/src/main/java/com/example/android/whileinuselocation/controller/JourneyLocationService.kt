@@ -19,6 +19,10 @@ import android.annotation.SuppressLint
 import android.app.*
 import android.content.*
 import android.content.res.Configuration
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
 import android.location.LocationManager
 import android.os.*
 import android.util.Log
@@ -28,7 +32,6 @@ import com.example.android.whileinuselocation.R
 import com.example.android.whileinuselocation.SharedPreferenceUtil
 import com.example.android.whileinuselocation.manager.EventManager
 import com.example.android.whileinuselocation.manager.MAPMManager
-import com.example.android.whileinuselocation.manager.UploadFilesTask
 import com.example.android.whileinuselocation.model.*
 import com.google.android.gms.common.api.ResolvableApiException
 import com.google.android.gms.location.*
@@ -36,6 +39,9 @@ import org.apache.commons.net.ftp.FTPClient
 import org.apache.commons.net.ftp.FTPReply
 import java.io.File
 import java.io.FileInputStream
+import kotlin.math.pow
+import kotlin.math.round
+import kotlin.math.sqrt
 import kotlin.system.exitProcess
 
 /**
@@ -61,6 +67,11 @@ class JourneyLocationService : Service() {
 
     private var noFixHappened = 0
 
+    private var x: Float = 0f
+    private var y: Float = 0f
+    private var z: Float = 0f
+    private var vitesse: Float = 0f
+
     // ########################### FILES ########################### //
     private lateinit var fileWriting: String
 
@@ -78,6 +89,10 @@ class JourneyLocationService : Service() {
     private lateinit var eventManager: EventManager
 
     private lateinit var mapmManager: MAPMManager
+
+    private lateinit var sensorManager: SensorManager
+
+    private var accelerometer: Sensor? = null
 
     private val contextServiceBroadcastReceiver = ContextServiceBroadcastReceiver()
 
@@ -164,6 +179,13 @@ class JourneyLocationService : Service() {
         notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
         eventManager = EventManager(applicationContext,399367311, 3, 10747906)
+        sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
+
+        accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_LINEAR_ACCELERATION)
+        Log.d(TAG,"ACCELEROMETER : $accelerometer")
+        accelerometer?.also {
+            sensorManager.registerListener(SensorAccelerometerListener(),it,SensorManager.SENSOR_DELAY_FASTEST)
+        }
 
         registerReceiver(contextServiceBroadcastReceiver, IntentFilter(LocationManager.MODE_CHANGED_ACTION))
         registerReceiver(contextServiceBroadcastReceiver, IntentFilter(LocationManager.PROVIDERS_CHANGED_ACTION))
@@ -598,6 +620,13 @@ class JourneyLocationService : Service() {
         LocalBroadcastManager.getInstance(applicationContext).sendBroadcast(intent)
     }
 
+    private fun broadCastAccelerometerInformations(){
+        //Log.d(TAG,"broadCastServiceInformations")
+        val intent = Intent(ACTION_SERVICE_LOCATION_BROADCAST_ACCELEROMETER)
+        intent.putExtra(EXTRA_ACCELEROMETER,vitesse)
+        LocalBroadcastManager.getInstance(applicationContext).sendBroadcast(intent)
+    }
+
     /*
      * Generates a BIG_TEXT_STYLE Notification that represent latest location.
      */
@@ -680,7 +709,26 @@ class JourneyLocationService : Service() {
         override fun onTick(millisUntilFinished: Long) {
 
         }
+    }
 
+    private inner class SensorAccelerometerListener(): SensorEventListener {
+        override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {
+
+        }
+
+        override fun onSensorChanged(event: SensorEvent?) {
+            if(event != null){
+                val delta_x = round(event.values[0] - x)
+                val delta_y = round(event.values[1] - y)
+                //val delta_z = round(event.values[2] - z)
+                vitesse = sqrt(delta_x.pow(2) + delta_y.pow(2) /*+ delta_z.pow(2)*/)
+                //Save new values
+                x = event.values[0]
+                y = event.values[1]
+                z = event.values[2]
+                broadCastAccelerometerInformations()
+            }
+        }
     }
 
     /**
@@ -779,12 +827,17 @@ class JourneyLocationService : Service() {
 
         internal const val ACTION_SERVICE_LOCATION_BROADCAST_CHECK_REQUEST =
             "$PACKAGE_NAME.action.ACTION_FOREGROUND_ONLY_LOCATION_BROADCAST_CHECK_REQUEST"
+
+        internal const val ACTION_SERVICE_LOCATION_BROADCAST_ACCELEROMETER =
+            "$PACKAGE_NAME.action.ACTION_FOREGROUND_ONLY_LOCATION_BROADCAST_ACCELEROMETER"
         // ################################################ //
 
         // #################### EXTRAS #################### //
         internal const val EXTRA_INFORMATIONS = "$PACKAGE_NAME.extra.LOCATION"
 
         internal const val EXTRA_JOURNEY = "$PACKAGE_NAME.extra.JOURNEY"
+
+        internal const val EXTRA_ACCELEROMETER = "$PACKAGE_NAME.extra.ACCELEROMETER"
 
         internal const val EXTRA_CHECK_REQUEST = "$PACKAGE_NAME.extra.CHECK_REQUEST"
         // ################################################ //

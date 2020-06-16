@@ -29,7 +29,6 @@ import android.os.SystemClock
 import android.provider.Settings
 import android.util.Log
 import android.widget.Chronometer
-import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.view.isVisible
@@ -44,9 +43,7 @@ import com.google.android.gms.common.api.ResolvableApiException
 import com.google.android.gms.location.*
 import com.google.android.material.snackbar.Snackbar
 import kotlinx.android.synthetic.main.activity_journey.*
-import java.security.Permission
 import java.time.format.DateTimeFormatter
-import java.util.*
 
 
 private const val TAG = "TruckTracker_Journey"
@@ -192,6 +189,9 @@ class JourneyActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenc
         )
         LocalBroadcastManager.getInstance(this).registerReceiver(
             journeyLocationServiceBroadcastReceiver,IntentFilter(JourneyLocationService.ACTION_SERVICE_LOCATION_BROADCAST_JOURNEY)
+        )
+        LocalBroadcastManager.getInstance(this).registerReceiver(
+            journeyLocationServiceBroadcastReceiver,IntentFilter(JourneyLocationService.ACTION_SERVICE_LOCATION_BROADCAST_ACCELEROMETER)
         )
 
         val menuIntent: Intent = intent
@@ -435,6 +435,12 @@ class JourneyActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenc
         textView_date_start_journey.text = journey.getStartDateTime().format(dateFormatter)
     }
 
+    private fun accelerometerInformationsToScreen(values: Float) {
+        textView_value_axe_x.text = values.toString()
+        //textView_value_axe_y.text = values[1].toString()
+        //textView_value_axe_z.text = values[2].toString()
+    }
+
     /**
      * Receiver for location broadcasts from [JourneyLocationService].
      */
@@ -465,6 +471,14 @@ class JourneyActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenc
                         journeyInformationsToScreen(journeyInfo)
                     }
                 }
+
+                JourneyLocationService.ACTION_SERVICE_LOCATION_BROADCAST_ACCELEROMETER -> {
+                    Log.d(TAG,"ACTION_SERVICE_LOCATION_BROADCAST_ACCELEROMETER")
+                    val accelerometerInfo = intent.getFloatExtra(JourneyLocationService.EXTRA_ACCELEROMETER, 0f)
+
+                    accelerometerInformationsToScreen(accelerometerInfo)
+                }
+
                 // CHECK_REQUEST
                 JourneyLocationService.ACTION_SERVICE_LOCATION_BROADCAST_CHECK_REQUEST -> {
                     //Log.d(TAG,"ACTION_SERVICE_LOCATION_BROADCAST_CHECK_REQUEST")
